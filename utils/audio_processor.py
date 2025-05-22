@@ -64,8 +64,12 @@ def process_audio_visualization(audio_path, image_path, output_path, color='#00F
             img = plt.imread(image_path)
             img_height, img_width = img.shape[0], img.shape[1]
             
-            # Create a new figure for the spectrogram with the same size as background
-            fig, ax = plt.subplots(figsize=(img_width/100, img_height/100), dpi=100)
+            # Make sure width and height are even (required for H.264 encoding)
+            adjusted_width = img_width if img_width % 2 == 0 else img_width - 1
+            adjusted_height = img_height if img_height % 2 == 0 else img_height - 1
+            
+            # Create a new figure for the spectrogram with adjusted size
+            fig, ax = plt.subplots(figsize=(adjusted_width/100, adjusted_height/100), dpi=100)
             
             # Plot the background image
             ax.imshow(img)

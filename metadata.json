@@ -1,1 +1,21 @@
-{"audio_files": [], "image_files": [], "output_files": []}
+{
+  "audio_files": [
+    {
+      "filename": "83a301df-7df3-4340-93fe-c425bc323cb8.wav",
+      "display_name": "Ferdi Hihat (Rocksta)",
+      "original_name": "Ferdi Hihat (Rocksta).wav",
+      "size": "62.1 KB",
+      "uploaded_at": "2025-05-22 21:38:20"
+    }
+  ],
+  "image_files": [
+    {
+      "filename": "9b64ecc1-15f7-41a8-a692-a6d17fe9f1aa.png",
+      "display_name": "16x9_minimalistic_grown_up_anime_mang-4",
+      "original_name": "16x9_minimalistic_grown_up_anime_mang-4.png",
+      "size": "1.1 MB",
+      "uploaded_at": "2025-05-22 21:38:32"
+    }
+  ],
+  "output_files": []
+}
