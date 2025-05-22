@@ -5,7 +5,7 @@ import tempfile
 import datetime
 from pathlib import Path
 from werkzeug.utils import secure_filename
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, send_from_directory
 from werkzeug.exceptions import RequestEntityTooLarge
 import librosa
 import shutil
@@ -208,7 +208,7 @@ def delete_preset(preset_id):
     return redirect(url_for('presets'))
 
 @app.route('/upload', methods=['POST'])
-def upload_files():
+def upload():
     """Handle file upload and processing"""
     try:
         logger.info("Upload request received")
@@ -294,7 +294,7 @@ def upload_files():
 @app.route('/download/<filename>')
 def download_file(filename):
     try:
-        return send_file(os.path.join(OUTPUT_FOLDER, filename), as_attachment=True)
+        return send_from_directory(app.config['OUTPUT_FOLDER'], secure_filename(filename), as_attachment=True)
     except Exception as e:
         logger.error(f"Download error: {str(e)}")
         flash('Error downloading file', 'error')
@@ -370,7 +370,7 @@ def delete_video(video_id):
     flash('Video deleted successfully', 'success')
     return redirect(url_for('library'))
 
-@app.errorhandler(RequestEntityTooLarge)
+@app.errorhandler(413)
 def request_entity_too_large(error):
     flash('File too large. Maximum size is 25MB.', 'error')
     return redirect(url_for('index'))

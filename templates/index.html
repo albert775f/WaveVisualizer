@@ -56,65 +56,28 @@
                         <h2>Create Audio Visualization</h2>
                     </div>
                     <div class="card-body">
-                        <form action="{{ url_for('create_video') }}" method="post">
+                        <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
                             <div class="row">
                                 <div class="col-md-6">
                                     <h4>Step 1: Select Files</h4>
                                     <div class="mb-3">
-                                        <label for="audio_id" class="form-label">Audio File</label>
-                                        <select class="form-select" id="audio_id" name="audio_id" required>
-                                            <option value="">Select Audio File</option>
-                                            {% for audio in audio_files %}
-                                            <option value="{{ audio.id }}">
-                                                {{ audio.display_name }} 
-                                                ({{ '%.2f'|format(audio.duration) }}s)
-                                            </option>
-                                            {% endfor %}
-                                        </select>
-                                        <div class="mt-2">
-                                            <a href="{{ url_for('library') }}" class="btn btn-sm btn-outline-info">
-                                                Upload Audio Files
-                                            </a>
-                                        </div>
+                                        <label for="audio_file" class="form-label">Audio File (WAV)</label>
+                                        <input type="file" class="form-control" id="audio_file" name="audio_file" accept=".wav" required>
+                                        <div class="form-text text-light">Only WAV files are supported</div>
                                     </div>
 
                                     <div class="mb-3">
-                                        <label for="image_id" class="form-label">Background Image</label>
-                                        <select class="form-select" id="image_id" name="image_id" required>
-                                            <option value="">Select Background Image</option>
-                                            {% for image in image_files %}
-                                            <option value="{{ image.id }}">
-                                                {{ image.display_name }} 
-                                                ({{ image.width }}x{{ image.height }})
-                                            </option>
-                                            {% endfor %}
-                                        </select>
-                                        <div class="mt-2">
-                                            <a href="{{ url_for('library') }}" class="btn btn-sm btn-outline-info">
-                                                Upload Images
-                                            </a>
-                                        </div>
+                                        <label for="image_file" class="form-label">Background Image</label>
+                                        <input type="file" class="form-control" id="image_file" name="image_file" accept=".jpg,.jpeg,.png" required>
+                                        <div class="form-text text-light">JPG and PNG files are supported</div>
                                     </div>
                                 </div>
                                 
                                 <div class="col-md-6">
                                     <h4>Step 2: Choose Visualization Style</h4>
                                     <div class="mb-3">
-                                        <label for="preset_id" class="form-label">Visualization Preset</label>
-                                        <select class="form-select" id="preset_id" name="preset_id" required>
-                                            {% for preset in presets %}
-                                            <option value="{{ preset.id }}">
-                                                <div class="color-preview" style="background-color: {{ preset.color }}"></div>
-                                                {{ preset.name }} 
-                                                ({{ preset.bar_count }} bars, {{ 'with' if preset.glow_effect else 'no' }} glow)
-                                            </option>
-                                            {% endfor %}
-                                        </select>
-                                        <div class="mt-2">
-                                            <a href="{{ url_for('presets') }}" class="btn btn-sm btn-outline-info">
-                                                Manage Presets
-                                            </a>
-                                        </div>
+                                        <label for="visualization_color" class="form-label">Visualization Color</label>
+                                        <input type="color" class="form-control form-control-color" id="visualization_color" name="visualization_color" value="#00FFFF">
                                     </div>
                                 </div>
                             </div>
@@ -145,7 +108,7 @@
                                 <div class="card bg-dark h-100">
                                     <div class="card-body">
                                         <h4>1. Upload Files</h4>
-                                        <p>Upload WAV audio files and JPG/PNG background images in the Media Library.</p>
+                                        <p>Upload WAV audio files and JPG/PNG background images.</p>
                                     </div>
                                 </div>
                             </div>
@@ -153,7 +116,7 @@
                                 <div class="card bg-dark h-100">
                                     <div class="card-body">
                                         <h4>2. Choose Settings</h4>
-                                        <p>Select visualization style and customize settings through presets.</p>
+                                        <p>Select visualization color and customize settings.</p>
                                     </div>
                                 </div>
                             </div>
