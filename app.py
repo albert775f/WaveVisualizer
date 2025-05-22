@@ -10,6 +10,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 import librosa
 import shutil
 import time
+from PIL import Image
 
 from models import db, Preset, AudioFile, ImageFile, OutputVideo, init_db
 from utils.audio_processor import process_audio_visualization
@@ -213,83 +214,88 @@ def upload():
     try:
         logger.info("Upload request received")
         
-        # Check audio file
-        if 'audio_file' not in request.files:
-            flash('Please select an audio file', 'error')
-            return redirect(url_for('index'))
+        # Check for audio file upload
+        if 'audio_file' in request.files:
+            audio_file = request.files['audio_file']
+            if audio_file.filename == '':
+                flash('Please select an audio file', 'error')
+                return redirect(url_for('library'))
+                
+            if not allowed_audio_file(audio_file.filename):
+                flash('Only WAV audio files are allowed', 'error')
+                return redirect(url_for('library'))
+                
+            # Create unique ID and save audio file
+            unique_id = str(uuid.uuid4())
+            audio_filename = secure_filename(unique_id + '_audio.wav')
+            audio_path = os.path.join(UPLOAD_FOLDER, audio_filename)
             
-        audio_file = request.files['audio_file']
-        if audio_file.filename == '':
-            flash('Please select an audio file', 'error')
-            return redirect(url_for('index'))
+            logger.info(f"Saving audio file: {audio_path}")
+            audio_file.save(audio_path)
             
-        if audio_file.filename and not allowed_audio_file(audio_file.filename):
-            flash('Only WAV audio files are allowed', 'error')
-            return redirect(url_for('index'))
+            # Create database entry
+            audio = AudioFile(
+                filename=audio_filename,
+                display_name=audio_file.filename,
+                file_size=os.path.getsize(audio_path),
+                duration=librosa.get_duration(path=audio_path)
+            )
+            db.session.add(audio)
+            db.session.commit()
             
-        # Check image file
-        if 'image_file' not in request.files:
-            flash('Please select a background image', 'error')
-            return redirect(url_for('index'))
+            flash('Audio file uploaded successfully', 'success')
+            return redirect(url_for('library'))
             
-        image_file = request.files['image_file']
-        if image_file.filename == '':
-            flash('Please select a background image', 'error')
-            return redirect(url_for('index'))
+        # Check for image file upload
+        elif 'image_file' in request.files:
+            image_file = request.files['image_file']
+            if image_file.filename == '':
+                flash('Please select an image file', 'error')
+                return redirect(url_for('library'))
+                
+            if not allowed_image_file(image_file.filename):
+                flash('Only JPG and PNG images are allowed', 'error')
+                return redirect(url_for('library'))
+                
+            # Create unique ID and save image file
+            unique_id = str(uuid.uuid4())
+            if image_file.filename and '.' in image_file.filename:
+                ext = image_file.filename.rsplit('.', 1)[1].lower()
+            else:
+                ext = 'jpg'
+                
+            image_filename = secure_filename(unique_id + '_image.' + ext)
+            image_path = os.path.join(UPLOAD_FOLDER, image_filename)
             
-        if image_file.filename and not allowed_image_file(image_file.filename):
-            flash('Only JPG and PNG images are allowed', 'error')
-            return redirect(url_for('index'))
-        
-        # Create unique ID and save files
-        unique_id = str(uuid.uuid4())
-        audio_filename = secure_filename(unique_id + '_audio.wav')
-        
-        # Get file extension safely
-        if image_file.filename and '.' in image_file.filename:
-            ext = image_file.filename.rsplit('.', 1)[1].lower()
+            logger.info(f"Saving image file: {image_path}")
+            image_file.save(image_path)
+            
+            # Get image dimensions
+            with Image.open(image_path) as img:
+                width, height = img.size
+            
+            # Create database entry
+            image = ImageFile(
+                filename=image_filename,
+                display_name=image_file.filename,
+                file_size=os.path.getsize(image_path),
+                width=width,
+                height=height
+            )
+            db.session.add(image)
+            db.session.commit()
+            
+            flash('Image file uploaded successfully', 'success')
+            return redirect(url_for('library'))
+            
         else:
-            ext = 'jpg'  # Default extension
+            flash('No file selected', 'error')
+            return redirect(url_for('library'))
             
-        image_filename = secure_filename(unique_id + '_image.' + ext)
-        
-        audio_path = os.path.join(UPLOAD_FOLDER, audio_filename)
-        image_path = os.path.join(UPLOAD_FOLDER, image_filename)
-        
-        logger.info(f"Saving files: {audio_path}, {image_path}")
-        audio_file.save(audio_path)
-        image_file.save(image_path)
-        
-        # Get color from form
-        color = request.form.get('visualization_color', '#00FFFF')
-        
-        # Generate output path
-        output_filename = secure_filename(unique_id + '_output.mp4')
-        output_path = os.path.join(OUTPUT_FOLDER, output_filename)
-        
-        logger.info(f"Processing visualization with color: {color}")
-        
-        # Process visualization
-        process_audio_visualization(
-            audio_path=audio_path,
-            image_path=image_path,
-            output_path=output_path,
-            color=color
-        )
-        
-        logger.info(f"Video created: {output_filename}")
-        
-        # Clean up input files after processing
-        os.remove(audio_path)
-        os.remove(image_path)
-        
-        # Redirect to download page
-        return render_template('success.html', filename=output_filename)
-        
     except Exception as e:
         logger.error(f"Error: {str(e)}", exc_info=True)
-        flash('An error occurred while processing your files. Please try again.', 'error')
-        return redirect(url_for('index'))
+        flash('An error occurred while processing your file. Please try again.', 'error')
+        return redirect(url_for('library'))
 
 @app.route('/download/<filename>')
 def download_file(filename):
