@@ -18,12 +18,13 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key")
 
 # Configure upload settings
-# Use a project-local directory instead of system temp directory
-UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
-OUTPUT_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'output')
+# Use simple directory paths
+UPLOAD_FOLDER = './uploads'
+OUTPUT_FOLDER = './output'
 ALLOWED_AUDIO_EXTENSIONS = {'wav'}
 ALLOWED_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png'}
-MAX_CONTENT_LENGTH = 30 * 1024 * 1024  # 30 MB max upload size
+# Reduce max size to avoid timeouts
+MAX_CONTENT_LENGTH = 25 * 1024 * 1024  # 25 MB max upload size
 
 # Create necessary directories
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
