@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 running_tasks = {}
 
 
-def process_video_task(task_id, audio_path, image_path, output_path, preset, app):
+def process_video_task(task_id, audio_path, image_path, output_path, preset_id, app):
     """
     Process a video generation task in the background
     
@@ -23,7 +23,7 @@ def process_video_task(task_id, audio_path, image_path, output_path, preset, app
     - audio_path: Path to audio file
     - image_path: Path to image file
     - output_path: Path for output video
-    - preset: Visualization preset settings
+    - preset_id: ID of the preset (not the object to avoid detached session issues)
     - app: Flask app context
     """
     with app.app_context():
@@ -32,6 +32,17 @@ def process_video_task(task_id, audio_path, image_path, output_path, preset, app
             task = BackgroundTask.query.filter_by(task_id=task_id).first()
             if not task:
                 logger.error(f"Task {task_id} not found in database")
+                return
+            
+            # Get preset from fresh database session
+            from models import Preset
+            preset = Preset.query.get(preset_id)
+            if not preset:
+                logger.error(f"Preset {preset_id} not found in database")
+                task.status = "failed"
+                task.error_message = f"Preset {preset_id} not found"
+                task.updated_at = datetime.utcnow()
+                db.session.commit()
                 return
             
             # Update task status
@@ -52,11 +63,14 @@ def process_video_task(task_id, audio_path, image_path, output_path, preset, app
             
             # Set up progress callback
             def update_progress(progress_percent):
-                nonlocal task
-                task.progress = progress_percent
-                task.updated_at = datetime.utcnow()
-                task.estimated_time = max(estimated_seconds - int((progress_percent / 100) * estimated_seconds), 0)
-                db.session.commit()
+                with app.app_context():
+                    # Get fresh task object from database to avoid stale session issues
+                    current_task = BackgroundTask.query.filter_by(task_id=task_id).first()
+                    if current_task:
+                        current_task.progress = progress_percent
+                        current_task.updated_at = datetime.utcnow()
+                        current_task.estimated_time = max(estimated_seconds - int((progress_percent / 100) * estimated_seconds), 0)
+                        db.session.commit()
             
             # Process the video with preset parameters
             process_audio_visualization(
@@ -77,26 +91,46 @@ def process_video_task(task_id, audio_path, image_path, output_path, preset, app
                 progress_callback=update_progress
             )
             
-            # Create the output video record
-            output_filename = os.path.basename(output_path)
-            display_name = f"{task.audio_file.display_name}_{task.image_file.display_name}.mp4"
-            
-            # Create output video entry with fresh database session
-            output_video = OutputVideo()
-            output_video.filename = output_filename
-            output_video.display_name = display_name
-            output_video.audio_file_id = task.audio_file_id
-            output_video.image_file_id = task.image_file_id
-            output_video.preset_id = task.preset_id
-            db.session.add(output_video)
-            
-            # Update task as completed
-            task.status = "completed"
-            task.progress = 100
-            task.estimated_time = 0
-            task.output_filename = output_filename
-            task.updated_at = datetime.utcnow()
-            db.session.commit()
+            # Get fresh task data for creating output video
+            with app.app_context():
+                fresh_task = BackgroundTask.query.filter_by(task_id=task_id).first()
+                if not fresh_task:
+                    logger.error(f"Task {task_id} not found when trying to create output record")
+                    return
+                
+                # Get audio and image records for display name
+                from models import AudioFile, ImageFile
+                audio_file = AudioFile.query.get(fresh_task.audio_file_id)
+                image_file = ImageFile.query.get(fresh_task.image_file_id)
+                
+                if not audio_file or not image_file:
+                    logger.error(f"Audio or image file not found for task {task_id}")
+                    fresh_task.status = "failed"
+                    fresh_task.error_message = "Audio or image file not found"
+                    fresh_task.updated_at = datetime.utcnow()
+                    db.session.commit()
+                    return
+                
+                # Create the output video record
+                output_filename = os.path.basename(output_path)
+                display_name = f"{audio_file.display_name}_{image_file.display_name}.mp4"
+                
+                # Create output video entry with fresh database session
+                output_video = OutputVideo()
+                output_video.filename = output_filename
+                output_video.display_name = display_name
+                output_video.audio_file_id = fresh_task.audio_file_id
+                output_video.image_file_id = fresh_task.image_file_id
+                output_video.preset_id = fresh_task.preset_id
+                db.session.add(output_video)
+                
+                # Update task as completed
+                fresh_task.status = "completed"
+                fresh_task.progress = 100
+                fresh_task.estimated_time = 0
+                fresh_task.output_filename = output_filename
+                fresh_task.updated_at = datetime.utcnow()
+                db.session.commit()
             
             logger.info(f"Background task {task_id} completed successfully")
             
@@ -137,10 +171,13 @@ def start_video_generation_task(audio_file, image_file, preset, app):
     output_filename = f"{uuid.uuid4()}.mp4"
     output_path = os.path.join(os.getcwd(), 'output', output_filename)
     
+    # Save preset ID to pass to the thread (avoiding detached session issues)
+    preset_id = preset.id
+    
     # Start processing thread
     thread = threading.Thread(
         target=process_video_task,
-        args=(task_id, audio_path, image_path, output_path, preset, app)
+        args=(task_id, audio_path, image_path, output_path, preset_id, app)
     )
     thread.daemon = True  # Allow the thread to be terminated when the main program exits
     thread.start()

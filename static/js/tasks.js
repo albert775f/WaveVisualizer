@@ -1,5 +1,3 @@
-// Task management functions for background video processing
-
 // Auto-refresh for active tasks
 function updateActiveTasks() {
     const taskRows = document.querySelectorAll('#active-tasks tr');
@@ -40,26 +38,20 @@ function updateActiveTasks() {
 
                 // If task is completed or failed, refresh the page to show it in the completed section
                 if (task.status === 'completed' || task.status === 'failed') {
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 1000); // Wait 1 second before reloading to prevent rapid refreshes
+                    window.location.reload();
                 }
             });
         })
         .catch(error => console.error('Error updating tasks:', error));
 }
 
-// Initialize task monitoring
+// Update every 3 seconds
+setInterval(updateActiveTasks, 3000);
+
+// Initialize tooltips
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize tooltips for errors
     const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
     tooltipTriggerList.map(function(tooltipTriggerEl) {
         return new bootstrap.Tooltip(tooltipTriggerEl);
     });
-    
-    // Start auto-refresh for active tasks
-    setInterval(updateActiveTasks, 3000); // Update every 3 seconds
-    
-    // Initial update
-    updateActiveTasks();
 });
