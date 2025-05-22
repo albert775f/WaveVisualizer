@@ -17,5 +17,14 @@
       "uploaded_at": "2025-05-22 21:38:32"
     }
   ],
-  "output_files": []
+  "output_files": [
+    {
+      "filename": "c7fb331e-5926-4ca3-a4ea-ab411c215326.mp4",
+      "display_name": "pol",
+      "audio_filename": "83a301df-7df3-4340-93fe-c425bc323cb8.wav",
+      "image_filename": "9b64ecc1-15f7-41a8-a692-a6d17fe9f1aa.png",
+      "color": "#00ffff",
+      "created_at": "2025-05-22 21:42:19"
+    }
+  ]
 }

@@ -88,8 +88,8 @@ def process_audio_visualization(audio_path, image_path, output_path, color='#00F
             # Create a new figure for the spectrogram with adjusted size
             fig, ax = plt.subplots(figsize=(adjusted_width/100, adjusted_height/100), dpi=100)
             
-            # Plot the background image
-            ax.imshow(img)
+            # Plot the background image with correct orientation (not upside down)
+            ax.imshow(img, origin='upper')
             
             # Calculate frequency bins to show (focus on audible range)
             # Get reduced number of frequency bins (more visually appealing)
