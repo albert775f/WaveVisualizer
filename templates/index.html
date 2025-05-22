@@ -76,8 +76,74 @@
                                 <div class="col-md-6">
                                     <h4>Step 2: Choose Visualization Style</h4>
                                     <div class="mb-3">
+                                        <label for="preset" class="form-label">Visualization Preset</label>
+                                        <select class="form-select" id="preset" name="preset_id">
+                                            {% for preset in presets %}
+                                            <option value="{{ preset.id }}">{{ preset.name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="mb-3">
                                         <label for="visualization_color" class="form-label">Visualization Color</label>
                                         <input type="color" class="form-control form-control-color" id="visualization_color" name="visualization_color" value="#00FFFF">
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="bar_count" class="form-label">Number of Bars</label>
+                                        <input type="range" class="form-range" id="bar_count" name="bar_count" min="16" max="128" value="64">
+                                        <div class="form-text text-light">Adjust the number of visualization bars</div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="bar_width_ratio" class="form-label">Bar Width</label>
+                                        <input type="range" class="form-range" id="bar_width_ratio" name="bar_width_ratio" min="0.1" max="1.0" step="0.1" value="0.8">
+                                        <div class="form-text text-light">Adjust the width of the bars</div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="bar_height_scale" class="form-label">Bar Height Scale</label>
+                                        <input type="range" class="form-range" id="bar_height_scale" name="bar_height_scale" min="0.1" max="2.0" step="0.1" value="1.0">
+                                        <div class="form-text text-light">Adjust the height of the bars</div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="glow_effect" name="glow_effect">
+                                            <label class="form-check-label" for="glow_effect">
+                                                Enable Glow Effect
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="glow_intensity" class="form-label">Glow Intensity</label>
+                                        <input type="range" class="form-range" id="glow_intensity" name="glow_intensity" min="0.1" max="1.0" step="0.1" value="0.5">
+                                        <div class="form-text text-light">Adjust the intensity of the glow effect</div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="responsiveness" class="form-label">Responsiveness</label>
+                                        <input type="range" class="form-range" id="responsiveness" name="responsiveness" min="0.1" max="2.0" step="0.1" value="1.0">
+                                        <div class="form-text text-light">Adjust how responsive the bars are to audio</div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="smoothing" class="form-label">Smoothing</label>
+                                        <input type="range" class="form-range" id="smoothing" name="smoothing" min="0.0" max="0.5" step="0.05" value="0.2">
+                                        <div class="form-text text-light">Adjust the smoothing between frames</div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="vertical_position" class="form-label">Vertical Position</label>
+                                        <input type="range" class="form-range" id="vertical_position" name="vertical_position" min="0.0" max="1.0" step="0.1" value="0.5">
+                                        <div class="form-text text-light">Adjust the vertical position of the visualization</div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="horizontal_margin" class="form-label">Horizontal Margin</label>
+                                        <input type="range" class="form-range" id="horizontal_margin" name="horizontal_margin" min="0.0" max="0.5" step="0.05" value="0.1">
+                                        <div class="form-text text-light">Adjust the margin from the sides</div>
                                     </div>
                                 </div>
                             </div>

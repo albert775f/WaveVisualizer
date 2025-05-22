@@ -381,6 +381,12 @@ def internal_server_error(error):
     flash('An internal server error occurred. Please try again.', 'error')
     return redirect(url_for('index'))
 
+@app.route('/api/preset/<int:preset_id>')
+def get_preset(preset_id):
+    """Get preset settings as JSON"""
+    preset = Preset.query.get_or_404(preset_id)
+    return jsonify(preset.to_dict())
+
 if __name__ == '__main__':
     # Clean up old files before starting
     cleanup_old_files()

@@ -209,7 +209,7 @@
                     <h5 class="modal-title" id="uploadAudioModalLabel">Upload Audio File</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <form action="{{ url_for('upload_audio') }}" method="post" enctype="multipart/form-data">
+                <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
                     <div class="modal-body">
                         <div class="mb-3">
                             <label for="audioFile" class="form-label">Select WAV File</label>
@@ -234,7 +234,7 @@
                     <h5 class="modal-title" id="uploadImageModalLabel">Upload Background Image</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <form action="{{ url_for('upload_image') }}" method="post" enctype="multipart/form-data">
+                <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
                     <div class="modal-body">
                         <div class="mb-3">
                             <label for="imageFile" class="form-label">Select Image</label>

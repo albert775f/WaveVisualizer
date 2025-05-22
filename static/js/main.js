@@ -14,8 +14,41 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    // Preset selection handler
+    const presetSelect = document.getElementById('preset');
+    if (presetSelect) {
+        presetSelect.addEventListener('change', function() {
+            const presetId = this.value;
+            if (presetId) {
+                fetch(`/api/preset/${presetId}`)
+                    .then(response => response.json())
+                    .then(preset => {
+                        // Update form fields with preset values
+                        document.getElementById('visualization_color').value = preset.color;
+                        document.getElementById('bar_count').value = preset.bar_count;
+                        document.getElementById('bar_width_ratio').value = preset.bar_width_ratio;
+                        document.getElementById('bar_height_scale').value = preset.bar_height_scale;
+                        document.getElementById('glow_effect').checked = preset.glow_effect;
+                        document.getElementById('glow_intensity').value = preset.glow_intensity;
+                        document.getElementById('responsiveness').value = preset.responsiveness;
+                        document.getElementById('smoothing').value = preset.smoothing;
+                        document.getElementById('vertical_position').value = preset.vertical_position;
+                        document.getElementById('horizontal_margin').value = preset.horizontal_margin;
+                        
+                        // Update UI
+                        toggleGlowSettings(preset.glow_effect);
+                        updateColorPreview(preset.color);
+                    })
+                    .catch(error => {
+                        console.error('Error loading preset:', error);
+                        showError('Failed to load preset settings');
+                    });
+            }
+        });
+    }
+    
     // Color picker preview update
-    const colorInput = document.getElementById('color');
+    const colorInput = document.getElementById('visualization_color');
     if (colorInput) {
         colorInput.addEventListener('input', function(e) {
             updateColorPreview(this.value);
@@ -35,18 +68,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const preview = document.getElementById('colorPreview');
         if (preview) {
             preview.style.backgroundColor = color;
-        }
-        const textInput = document.getElementById('colorText');
-        if (textInput) {
-            textInput.value = color;
-        }
-    };
-    
-    window.updateColorInput = function(text) {
-        const picker = document.getElementById('color');
-        if (picker) {
-            picker.value = text;
-            updateColorPreview(text);
         }
     };
     
