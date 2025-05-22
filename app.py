@@ -68,7 +68,8 @@ def index():
     presets = Preset.query.all()
     if not presets:
         # Create default preset if none exist
-        default_preset = Preset(name="Default")
+        default_preset = Preset()
+        default_preset.name = "Default"
         db.session.add(default_preset)
         db.session.commit()
         presets = [default_preset]
@@ -125,7 +126,10 @@ def new_preset():
         return redirect(url_for('presets'))
     
     # Default preset as template
-    default_preset = Preset.query.first() or Preset(name="Default")
+    default_preset = Preset.query.first()
+    if not default_preset:
+        default_preset = Preset()
+        default_preset.name = "Default"
     return render_template('preset_form.html', preset=default_preset, is_new=True)
 
 @app.route('/preset/edit/<int:preset_id>', methods=['GET', 'POST'])
@@ -183,7 +187,7 @@ def upload_audio():
         flash('No audio file selected', 'danger')
         return redirect(request.referrer or url_for('library'))
     
-    if file and allowed_audio_file(file.filename):
+    if file and file.filename and allowed_audio_file(file.filename):
         # Create a unique filename
         filename = secure_filename(file.filename)
         display_name = filename
@@ -199,12 +203,11 @@ def upload_audio():
             file_size = os.path.getsize(file_path)
             
             # Save to database
-            audio_file = AudioFile(
-                filename=unique_filename,
-                display_name=display_name,
-                file_size=file_size,
-                duration=duration
-            )
+            audio_file = AudioFile()
+            audio_file.filename = unique_filename
+            audio_file.display_name = display_name
+            audio_file.file_size = file_size
+            audio_file.duration = duration
             db.session.add(audio_file)
             db.session.commit()
             
@@ -249,13 +252,12 @@ def upload_image():
             file_size = os.path.getsize(file_path)
             
             # Save to database
-            image_file = ImageFile(
-                filename=unique_filename,
-                display_name=display_name,
-                width=width,
-                height=height,
-                file_size=file_size
-            )
+            image_file = ImageFile()
+            image_file.filename = unique_filename
+            image_file.display_name = display_name
+            image_file.width = width
+            image_file.height = height
+            image_file.file_size = file_size
             db.session.add(image_file)
             db.session.commit()
             
@@ -325,13 +327,12 @@ def create_video():
         )
         
         # Create output video record
-        output_video = OutputVideo(
-            filename=output_filename,
-            display_name=f"{audio_file.display_name}_{image_file.display_name}.mp4",
-            audio_file_id=audio_file.id,
-            image_file_id=image_file.id,
-            preset_id=preset.id if preset_id else None
-        )
+        output_video = OutputVideo()
+        output_video.filename = output_filename
+        output_video.display_name = f"{audio_file.display_name}_{image_file.display_name}.mp4"
+        output_video.audio_file_id = audio_file.id
+        output_video.image_file_id = image_file.id
+        output_video.preset_id = preset.id if preset_id else None
         db.session.add(output_video)
         db.session.commit()
         
