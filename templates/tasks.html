@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}Task Manager{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>Video Generation Tasks</h1>
+    <p class="lead">Manage your video generation tasks and track their progress. Tasks continue processing even when you close your browser.</p>
+
+    <!-- Navigation -->
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('index') }}">Create New Video</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('library') }}">Media Library</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link active" href="{{ url_for('tasks') }}">Tasks</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('presets') }}">Presets</a>
+        </li>
+    </ul>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">Active Tasks</h4>
+                </div>
+                <div class="card-body">
+                    {% if active_tasks %}
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Status</th>
+                                        <th>Audio</th>
+                                        <th>Image</th>
+                                        <th>Progress</th>
+                                        <th>Estimated Time</th>
+                                        <th>Started</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="active-tasks">
+                                    {% for task in active_tasks %}
+                                    <tr data-task-id="{{ task.task_id }}">
+                                        <td class="task-status">{{ task.status }}</td>
+                                        <td>{{ task.audio_file.display_name }}</td>
+                                        <td>{{ task.image_file.display_name }}</td>
+                                        <td>
+                                            <div class="progress">
+                                                <div class="progress-bar" role="progressbar" style="width: {{ task.progress }}%;" 
+                                                    aria-valuenow="{{ task.progress }}" aria-valuemin="0" aria-valuemax="100">
+                                                    {{ task.progress }}%
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td class="estimated-time">
+                                            {% if task.estimated_time > 0 %}
+                                                {{ task.estimated_time }} seconds
+                                            {% else %}
+                                                Calculating...
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ task.created_at }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info">No active tasks.</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header bg-secondary text-white">
+                    <h4 class="mb-0">Completed Tasks</h4>
+                </div>
+                <div class="card-body">
+                    {% if completed_tasks %}
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Status</th>
+                                        <th>Audio</th>
+                                        <th>Image</th>
+                                        <th>Completed</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for task in completed_tasks %}
+                                    <tr>
+                                        <td>
+                                            {% if task.status == 'completed' %}
+                                                <span class="badge bg-success">Completed</span>
+                                            {% else %}
+                                                <span class="badge bg-danger">Failed</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ task.audio_file.display_name }}</td>
+                                        <td>{{ task.image_file.display_name }}</td>
+                                        <td>{{ task.updated_at }}</td>
+                                        <td>
+                                            {% if task.status == 'completed' and task.output_filename %}
+                                                <a href="{{ url_for('download_file', filename=task.output_filename) }}" class="btn btn-sm btn-primary">Download</a>
+                                            {% elif task.status == 'failed' and task.error_message %}
+                                                <button class="btn btn-sm btn-danger" data-bs-toggle="tooltip" title="{{ task.error_message }}">Error Info</button>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info">No completed tasks yet.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-header bg-dark text-white">
+                    <h4 class="mb-0">Start New Task</h4>
+                </div>
+                <div class="card-body">
+                    <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg w-100">Create New Video</a>
+                    <hr>
+                    <div class="alert alert-info">
+                        <h5>Background Processing</h5>
+                        <p>Videos are generated in the background, allowing you to:</p>
+                        <ul>
+                            <li>Close your browser while videos are processing</li>
+                            <li>Start multiple video generations at once</li>
+                            <li>Monitor progress and estimated completion time</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Auto-refresh for active tasks
+function updateActiveTasks() {
+    const taskRows = document.querySelectorAll('#active-tasks tr');
+    if (taskRows.length === 0) return;
+
+    // Get all task IDs
+    const taskIds = Array.from(taskRows).map(row => row.dataset.taskId);
+    
+    // Fetch updated task data
+    fetch('/api/tasks')
+        .then(response => response.json())
+        .then(tasks => {
+            tasks.forEach(task => {
+                const row = document.querySelector(`tr[data-task-id="${task.task_id}"]`);
+                if (!row) return;
+
+                // Update status
+                const statusCell = row.querySelector('.task-status');
+                if (statusCell) statusCell.textContent = task.status;
+
+                // Update progress bar
+                const progressBar = row.querySelector('.progress-bar');
+                if (progressBar) {
+                    progressBar.style.width = `${task.progress}%`;
+                    progressBar.setAttribute('aria-valuenow', task.progress);
+                    progressBar.textContent = `${task.progress}%`;
+                }
+
+                // Update estimated time
+                const timeCell = row.querySelector('.estimated-time');
+                if (timeCell) {
+                    if (task.estimated_time > 0) {
+                        timeCell.textContent = `${task.estimated_time} seconds`;
+                    } else {
+                        timeCell.textContent = 'Calculating...';
+                    }
+                }
+
+                // If task is completed or failed, refresh the page to show it in the completed section
+                if (task.status === 'completed' || task.status === 'failed') {
+                    window.location.reload();
+                }
+            });
+        })
+        .catch(error => console.error('Error updating tasks:', error));
+}
+
+// Update every 3 seconds
+setInterval(updateActiveTasks, 3000);
+
+// Initialize tooltips
+document.addEventListener('DOMContentLoaded', function() {
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function(tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+</script>
+{% endblock %}

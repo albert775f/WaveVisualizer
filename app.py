@@ -9,8 +9,9 @@ from flask import Flask, render_template, request, redirect, url_for, flash, sen
 from werkzeug.exceptions import RequestEntityTooLarge
 import librosa
 
-from models import db, Preset, AudioFile, ImageFile, OutputVideo
+from models import db, Preset, AudioFile, ImageFile, OutputVideo, BackgroundTask
 from utils.audio_processor import process_audio_visualization
+from utils.background_processor import start_video_generation_task, get_task_status, get_all_tasks
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -273,11 +274,12 @@ def upload_image():
 
 @app.route('/create/video', methods=['POST'])
 def create_video():
-    """Create a video from selected audio and image files"""
+    """Create a video from selected audio and image files (synchronous version)"""
     # Get form data
     audio_id = request.form.get('audio_id')
     image_id = request.form.get('image_id')
     preset_id = request.form.get('preset_id')
+    background = request.form.get('background', 'false') == 'true'
     
     if not audio_id:
         flash('No audio file selected', 'danger')
@@ -307,6 +309,17 @@ def create_video():
     output_filename = f"{uuid.uuid4()}.mp4"
     output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
     
+    # If background processing is requested, start a task and return
+    if background:
+        try:
+            task = start_video_generation_task(audio_file, image_file, preset, app)
+            flash('Video generation task started. You can close the browser and check back later.', 'success')
+            return redirect(url_for('tasks'))
+        except Exception as e:
+            flash(f'Error starting background task: {str(e)}', 'danger')
+            return redirect(request.referrer or url_for('index'))
+    
+    # Otherwise, process synchronously (original behavior)
     try:
         # Process the audio and create the video
         process_audio_visualization(
@@ -332,7 +345,7 @@ def create_video():
         output_video.display_name = f"{audio_file.display_name}_{image_file.display_name}.mp4"
         output_video.audio_file_id = audio_file.id
         output_video.image_file_id = image_file.id
-        output_video.preset_id = preset.id if preset_id else None
+        output_video.preset_id = preset.id
         db.session.add(output_video)
         db.session.commit()
         
@@ -423,6 +436,32 @@ def delete_video(video_id):
 def request_entity_too_large(error):
     flash('File too large. Maximum size is 32MB.', 'danger')
     return redirect(request.referrer or url_for('index'))
+
+@app.route('/tasks')
+def tasks():
+    """View and manage background tasks"""
+    active_tasks = BackgroundTask.query.filter(BackgroundTask.status.in_(['pending', 'processing'])).order_by(BackgroundTask.created_at.desc()).all()
+    completed_tasks = BackgroundTask.query.filter(BackgroundTask.status.in_(['completed', 'failed'])).order_by(BackgroundTask.created_at.desc()).limit(10).all()
+    
+    return render_template('tasks.html', active_tasks=active_tasks, completed_tasks=completed_tasks)
+
+
+@app.route('/api/tasks/<task_id>', methods=['GET'])
+def get_task(task_id):
+    """Get task status via API"""
+    task = BackgroundTask.query.filter_by(task_id=task_id).first()
+    if not task:
+        return jsonify({'error': 'Task not found'}), 404
+    
+    return jsonify(task.to_dict())
+
+
+@app.route('/api/tasks', methods=['GET'])
+def list_tasks():
+    """List all tasks via API"""
+    tasks = BackgroundTask.query.order_by(BackgroundTask.created_at.desc()).all()
+    return jsonify([task.to_dict() for task in tasks])
+
 
 @app.errorhandler(500)
 def internal_server_error(error):
