@@ -65,8 +65,25 @@ def process_audio_visualization(audio_path, image_path, output_path, color='#00F
             img_height, img_width = img.shape[0], img.shape[1]
             
             # Make sure width and height are even (required for H.264 encoding)
+            # We need to resize the actual image, not just the figure
+            from PIL import Image
+            
+            # Load image with PIL to resize if needed
+            pil_img = Image.open(image_path)
             adjusted_width = img_width if img_width % 2 == 0 else img_width - 1
             adjusted_height = img_height if img_height % 2 == 0 else img_height - 1
+            
+            # Resize only if dimensions are odd
+            if img_width % 2 != 0 or img_height % 2 != 0:
+                pil_img = pil_img.resize((adjusted_width, adjusted_height))
+                
+                # Save the resized image to a temporary file
+                temp_image_path = os.path.join(tempfile.gettempdir(), "resized_image.png")
+                pil_img.save(temp_image_path)
+                
+                # Use the resized image instead
+                img = plt.imread(temp_image_path)
+                logger.info(f"Resized image from {img_width}x{img_height} to {adjusted_width}x{adjusted_height}")
             
             # Create a new figure for the spectrogram with adjusted size
             fig, ax = plt.subplots(figsize=(adjusted_width/100, adjusted_height/100), dpi=100)
@@ -153,6 +170,29 @@ def process_audio_visualization(audio_path, image_path, output_path, color='#00F
         # Execute FFmpeg command
         logger.info("Running FFmpeg to create video...")
         try:
+            # Before running FFmpeg, let's verify the dimensions of the frames
+            # Check the first frame
+            first_frame_path = os.path.join(frames_dir, "frame_0000.png")
+            if os.path.exists(first_frame_path):
+                from PIL import Image
+                with Image.open(first_frame_path) as img:
+                    width, height = img.size
+                    logger.info(f"Frame dimensions: {width}x{height}")
+                    
+                    # If width or height is odd, resize all frames
+                    if width % 2 != 0 or height % 2 != 0:
+                        logger.info("Fixing odd dimensions in frames...")
+                        new_width = width if width % 2 == 0 else width - 1
+                        new_height = height if height % 2 == 0 else height - 1
+                        
+                        # Resize all frames to ensure even dimensions
+                        for file in os.listdir(frames_dir):
+                            if file.startswith("frame_") and file.endswith(".png"):
+                                frame_path = os.path.join(frames_dir, file)
+                                with Image.open(frame_path) as frame:
+                                    resized = frame.resize((new_width, new_height))
+                                    resized.save(frame_path)
+            
             # Run FFmpeg with detailed output for debugging
             process = subprocess.run(
                 ffmpeg_cmd, 
@@ -161,7 +201,6 @@ def process_audio_visualization(audio_path, image_path, output_path, color='#00F
                 stderr=subprocess.PIPE,
                 text=True
             )
-            logger.info(f"FFmpeg output: {process.stdout}")
             
             if not os.path.exists(output_path):
                 logger.error("FFmpeg completed but output file was not created")
