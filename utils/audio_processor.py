@@ -145,9 +145,33 @@ def process_audio_visualization(audio_path, image_path, output_path, color='#00F
         
         # Execute FFmpeg command
         logger.info("Running FFmpeg to create video...")
-        subprocess.run(ffmpeg_cmd, check=True)
-        
-        logger.info(f"Video successfully created at {output_path}")
+        try:
+            # Run FFmpeg with detailed output for debugging
+            process = subprocess.run(
+                ffmpeg_cmd, 
+                check=True, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            logger.info(f"FFmpeg output: {process.stdout}")
+            
+            if not os.path.exists(output_path):
+                logger.error("FFmpeg completed but output file was not created")
+                raise Exception("Failed to create output video file")
+                
+            # Check if file is readable
+            with open(output_path, 'rb') as f:
+                # Just read a small chunk to verify file is accessible
+                f.read(1024)
+                
+            logger.info(f"Video successfully created at {output_path}")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"FFmpeg error: {e.stderr}")
+            raise Exception(f"FFmpeg error: {e.stderr}")
+        except Exception as e:
+            logger.error(f"Error verifying output file: {str(e)}")
+            raise
         
         # Clean up temporary frames
         for file in os.listdir(frames_dir):
