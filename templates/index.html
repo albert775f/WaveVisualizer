@@ -40,7 +40,7 @@
                                         <i class="fas fa-music me-2"></i>Audio File (WAV)
                                     </label>
                                     <input type="file" class="form-control" id="audio-file" name="audio_file" accept=".wav" required>
-                                    <div class="form-text">Select a WAV audio file.</div>
+                                    <div class="form-text">Select a WAV audio file (max 25MB).</div>
                                 </div>
                                 
                                 <div class="mb-3">
@@ -48,7 +48,7 @@
                                         <i class="fas fa-image me-2"></i>Background Image
                                     </label>
                                     <input type="file" class="form-control" id="image-file" name="image_file" accept=".jpg,.jpeg,.png" required>
-                                    <div class="form-text">Select a JPG or PNG image for the background.</div>
+                                    <div class="form-text">Select a JPG or PNG image for the background (max 5MB).</div>
                                 </div>
                                 
                                 <div class="mb-3">
@@ -57,6 +57,11 @@
                                     </label>
                                     <input type="color" class="form-control form-control-color" id="visualization-color" name="visualization_color" value="#00FFFF">
                                     <div class="form-text">Choose a color for the audio spectrum visualization.</div>
+                                </div>
+                                
+                                <div class="alert alert-info" role="alert">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    <strong>Tips:</strong> Use shorter audio files (under 1 minute) for faster processing. Make sure your image has good contrast with the visualization color.
                                 </div>
                                 
                                 <div class="d-grid">

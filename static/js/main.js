@@ -18,6 +18,20 @@ document.addEventListener('DOMContentLoaded', function() {
     uploadForm.addEventListener('submit', function(e) {
         e.preventDefault();
         
+        // Validate files before submission
+        const audioFile = document.getElementById('audio-file').files[0];
+        const imageFile = document.getElementById('image-file').files[0];
+        
+        if (!audioFile) {
+            showError('Please select an audio file');
+            return;
+        }
+        
+        if (!imageFile) {
+            showError('Please select a background image');
+            return;
+        }
+        
         // Show processing UI
         uploadContainer.classList.add('d-none');
         processingContainer.classList.remove('d-none');
@@ -29,12 +43,50 @@ document.addEventListener('DOMContentLoaded', function() {
         // Get form data
         const formData = new FormData(uploadForm);
         
-        // Send AJAX request
-        fetch('/upload', {
+        // Add timeout and retry logic for better reliability
+        const fetchWithRetry = (url, options, retries = 3, backoff = 300) => {
+            return new Promise((resolve, reject) => {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => {
+                    controller.abort();
+                }, 60000); // 60 second timeout
+                
+                const makeRequest = (attemptsLeft) => {
+                    fetch(url, {...options, signal: controller.signal})
+                        .then(response => {
+                            clearTimeout(timeout);
+                            resolve(response);
+                        })
+                        .catch(error => {
+                            console.log(`Fetch attempt failed: ${error.message}`);
+                            
+                            if (attemptsLeft > 0) {
+                                setTimeout(() => {
+                                    console.log(`Retrying... ${attemptsLeft} attempts left`);
+                                    makeRequest(attemptsLeft - 1);
+                                }, backoff);
+                            } else {
+                                clearTimeout(timeout);
+                                reject(error);
+                            }
+                        });
+                };
+                
+                makeRequest(retries);
+            });
+        };
+        
+        // Send AJAX request with retry mechanism
+        fetchWithRetry('/upload', {
             method: 'POST',
             body: formData
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Server responded with status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.error) {
                 // Show error
@@ -54,7 +106,7 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(error => {
             console.error('Error:', error);
-            showError('Network error. Please try again.');
+            showError('Network error or upload timeout. Please try again with smaller files or check your connection.');
         });
         
         // Start progress checking animation
@@ -148,13 +200,21 @@ document.addEventListener('DOMContentLoaded', function() {
     // File input validation
     const audioFileInput = document.getElementById('audio-file');
     const imageFileInput = document.getElementById('image-file');
+    const generateBtn = document.getElementById('generate-btn');
     
     audioFileInput.addEventListener('change', function() {
-        validateFileSize(this, 50); // 50MB limit
+        validateFileSize(this, 25); // 25MB limit
     });
     
     imageFileInput.addEventListener('change', function() {
-        validateFileSize(this, 10); // 10MB limit for images
+        validateFileSize(this, 5); // 5MB limit for images
+    });
+    
+    // Add loading state to button during submission
+    uploadForm.addEventListener('submit', function() {
+        const btn = document.getElementById('generate-btn');
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
+        btn.disabled = true;
     });
     
     function validateFileSize(input, maxSizeMB) {
