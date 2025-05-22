@@ -12,8 +12,9 @@ import gc  # For garbage collection
 from types import SimpleNamespace
 from PIL import Image
 
-# Import our custom image processor
+# Import our custom utility modules
 from utils.image_processor import ensure_even_dimensions
+from utils.video_processor import create_video_from_frames
 
 logger = logging.getLogger(__name__)
 
@@ -89,38 +90,14 @@ def process_audio_visualization(
             D_db = librosa.amplitude_to_db(D, ref=np.max)
             
             # Get image dimensions to size the spectrum visualization
-            from PIL import Image
-            
-            # Load image with PIL to handle resizing
-            pil_img = Image.open(image_path)
-            img_width, img_height = pil_img.size
-            
-            # Plot the spectrum
-            plt.figure(figsize=(10, 4))
-            plt.imshow(np.array(pil_img))
-            
-            # Make sure width and height are even (required for H.264 encoding)
-            # Adjust dimensions if needed
-            adjusted_width = img_width if img_width % 2 == 0 else img_width - 1
-            adjusted_height = img_height if img_height % 2 == 0 else img_height - 1
-            
-            # Resize only if dimensions are odd
-            if img_width % 2 != 0 or img_height % 2 != 0:
-                pil_img = pil_img.resize((adjusted_width, adjusted_height))
-                
-                # Save the resized image to a temporary file
-                temp_image_path = os.path.join(tempfile.gettempdir(), "resized_image.png")
-                pil_img.save(temp_image_path)
-                
-                # Use the resized image instead
-                img = plt.imread(temp_image_path)
-                logger.info(f"Resized image from {img_width}x{img_height} to {adjusted_width}x{adjusted_height}")
+            img_width, img_height = width, height
             
             # Create a new figure for the spectrogram with adjusted size
-            fig, ax = plt.subplots(figsize=(adjusted_width/100, adjusted_height/100), dpi=100)
+            fig, ax = plt.subplots(figsize=(img_width/100, img_height/100), dpi=100)
             
             # Plot the background image with correct orientation (not upside down)
-            ax.imshow(np.array(pil_img), origin='upper')
+            bg_img = plt.imread(image_path)
+            ax.imshow(bg_img, origin='upper')
             
             # Calculate frequency bins to show (focus on audible range)
             # Use the bar_count parameter for the number of frequency bins
@@ -150,51 +127,43 @@ def process_audio_visualization(
             # Calculate bar positions and heights using custom parameters
             n_bars = bar_count  # Number of bars to display
             
-            # Adjust width based on ratio parameter
-            effective_width = img_width * (1 - 2 * horizontal_margin)
-            bar_width = (effective_width * bar_width_ratio) / n_bars
-            bar_spacing = (effective_width * (1 - bar_width_ratio)) / (n_bars - 1)
+            # Calculate width of visualization bars
+            total_width = img_width * (1 - 2 * horizontal_margin)
+            bar_width = total_width / n_bars
             
-            # Resample to desired number of bars
-            bars_heights = np.interp(
-                np.linspace(0, len(normalized_amps) - 1, n_bars),
-                np.arange(len(normalized_amps)),
-                normalized_amps
-            )
+            # Scale amplitude to reasonable height range
+            max_height = img_height * 0.8 * bar_height_scale
             
-            # Apply height scaling
-            bars_heights = bars_heights * bar_height_scale
-            
-            # Determine vertical position
-            # vertical_position: 0.0 = top, 1.0 = bottom, 0.5 = center
-            margin_x = img_width * horizontal_margin  # Horizontal margin
-            
-            # Calculate vertical positioning
-            bar_section_height = img_height * 0.8  # Height of the section where bars appear
-            base_y = img_height * (0.1 + 0.8 * vertical_position)
-            max_bar_height = bar_section_height * 0.8
+            # Color conversion from hex to RGB
+            if color.startswith('#'):
+                color_rgb = tuple(int(color.lstrip('#')[i:i+2], 16) / 255 for i in (0, 2, 4))
+            else:
+                color_rgb = (0, 1, 1)  # Default to cyan if color format is incorrect
             
             # Draw bars
-            for j, height in enumerate(bars_heights):
-                bar_height = height * max_bar_height
-                x_pos = margin_x + j * (bar_width + bar_spacing)
+            for j in range(n_bars):
+                # Sample from normalized amplitudes, resampling to match bar_count
+                idx = int(j * (len(normalized_amps) / n_bars))
+                if idx >= len(normalized_amps):
+                    idx = len(normalized_amps) - 1
+                amplitude = normalized_amps[idx]
                 
-                # Calculate y position based on vertical_position
-                if vertical_position <= 0.5:
-                    # Top half - bars go down from position
-                    y_pos = base_y
-                    rect_y = y_pos
-                    rect_height = bar_height
-                else:
-                    # Bottom half - bars go up from position
-                    y_pos = base_y - bar_height
-                    rect_y = y_pos
-                    rect_height = bar_height
+                # Scale amplitude to pixel height
+                rect_height = amplitude * max_height
                 
-                # Add glow effect if enabled
+                # Position bars horizontally with margin
+                x_pos = horizontal_margin * img_width + j * bar_width
+                
+                # Adjust width based on bar_width_ratio parameter
+                bar_width = (total_width / n_bars) * bar_width_ratio
+                
+                # Calculate vertical position based on parameter (0=top, 1=bottom)
+                # This needs to account for the bar height
+                rect_y = img_height * vertical_position - (rect_height / 2)
+                
+                # Draw glow effect if enabled
                 if glow_effect:
-                    # Create a larger, more transparent rectangle for glow
-                    glow_extra = bar_width * 0.5 * glow_intensity
+                    glow_extra = 5  # Pixels of extra glow around bar
                     glow_rect = patches.Rectangle(
                         (x_pos - glow_extra, rect_y - glow_extra),
                         bar_width + 2 * glow_extra,
@@ -230,76 +199,23 @@ def process_audio_visualization(
         
         logger.info("All frames generated. Creating video...")
         
-        # Create video from frames using FFmpeg
-        frames_pattern = os.path.join(frames_dir, "frame_%04d.png")
+        # Create video from frames using our specialized video processor
+        # This handles ensuring dimensions are even for H.264 compatibility
+        logger.info("Using video processor to create final video...")
         
-        # Build FFmpeg command
-        ffmpeg_cmd = [
-            'ffmpeg',
-            '-y',  # Overwrite output file if it exists
-            '-framerate', str(fps),
-            '-i', frames_pattern,
-            '-i', audio_path,
-            '-c:v', 'libx264',
-            '-pix_fmt', 'yuv420p',
-            '-c:a', 'aac',
-            '-strict', 'experimental',
-            '-shortest',
-            output_path
-        ]
-        
-        # Execute FFmpeg command
-        logger.info("Running FFmpeg to create video...")
-        try:
-            # Before running FFmpeg, let's verify the dimensions of the frames
-            # Check the first frame
-            first_frame_path = os.path.join(frames_dir, "frame_0000.png")
-            if os.path.exists(first_frame_path):
-                from PIL import Image
-                with Image.open(first_frame_path) as img:
-                    width, height = img.size
-                    logger.info(f"Frame dimensions: {width}x{height}")
-                    
-                    # If width or height is odd, resize all frames
-                    if width % 2 != 0 or height % 2 != 0:
-                        logger.info("Fixing odd dimensions in frames...")
-                        new_width = width if width % 2 == 0 else width - 1
-                        new_height = height if height % 2 == 0 else height - 1
-                        
-                        # Resize all frames to ensure even dimensions
-                        for file in os.listdir(frames_dir):
-                            if file.startswith("frame_") and file.endswith(".png"):
-                                frame_path = os.path.join(frames_dir, file)
-                                with Image.open(frame_path) as frame:
-                                    resized = frame.resize((new_width, new_height))
-                                    resized.save(frame_path)
+        if progress_callback:
+            progress_callback(80)  # Video generation starting
             
-            # Update progress callback before running FFmpeg
-            if progress_callback:
-                progress_callback(80)  # 80% complete - starting FFmpeg
-                
-            # Run FFmpeg with detailed output for debugging
-            process = subprocess.run(
-                ffmpeg_cmd, 
-                check=True, 
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.PIPE,
-                text=True
+        try:
+            # Use our dedicated video processor to handle FFmpeg compatibility
+            create_video_from_frames(
+                frames_dir=frames_dir,
+                audio_path=audio_path,
+                output_path=output_path,
+                fps=fps,
+                progress_callback=progress_callback
             )
             
-            # Update progress callback after FFmpeg completes
-            if progress_callback:
-                progress_callback(95)  # 95% complete - FFmpeg finished
-            
-            if not os.path.exists(output_path):
-                logger.error("FFmpeg completed but output file was not created")
-                raise Exception("Failed to create output video file")
-                
-            # Check if file is readable
-            with open(output_path, 'rb') as f:
-                # Just read a small chunk to verify file is accessible
-                f.read(1024)
-                
             logger.info(f"Video successfully created at {output_path}")
         except subprocess.CalledProcessError as e:
             logger.error(f"FFmpeg error: {e.stderr}")
