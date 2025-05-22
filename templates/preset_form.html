@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ 'Create New Preset' if is_new else 'Edit Preset' }} - Audio Visualizer</title>
+    <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .form-range::-webkit-slider-thumb {
+            background: var(--bs-info);
+        }
+        .form-range::-moz-range-thumb {
+            background: var(--bs-info);
+        }
+        .color-preview {
+            width: 30px;
+            height: 30px;
+            display: inline-block;
+            border-radius: 5px;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">Audio Visualizer</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('index') }}">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('library') }}">Media Library</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="{{ url_for('presets') }}">Visualization Presets</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="row">
+            <div class="col-md-10 mx-auto">
+                <div class="card bg-dark text-light mb-4">
+                    <div class="card-header">
+                        <h2>{{ 'Create New Preset' if is_new else 'Edit Preset' }}</h2>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ url_for('new_preset') if is_new else url_for('edit_preset', preset_id=preset.id) }}">
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="name" class="form-label">Preset Name</label>
+                                        <input type="text" class="form-control" id="name" name="name" value="{{ preset.name }}" required>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="color" class="form-label">Bar Color</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text">
+                                                <span id="colorPreview" class="color-preview" style="background-color: {{ preset.color }};"></span>
+                                            </span>
+                                            <input type="color" class="form-control form-control-color" id="color" name="color" value="{{ preset.color }}" onchange="updateColorPreview(this.value)">
+                                            <input type="text" class="form-control" id="colorText" value="{{ preset.color }}" onchange="updateColorInput(this.value)">
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="bar_count" class="form-label">Number of Bars: <span id="bar_count_value">{{ preset.bar_count }}</span></label>
+                                        <input type="range" class="form-range" id="bar_count" name="bar_count" min="16" max="128" step="4" value="{{ preset.bar_count }}" oninput="document.getElementById('bar_count_value').textContent = this.value">
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="bar_width_ratio" class="form-label">Bar Width Ratio: <span id="bar_width_ratio_value">{{ '%.2f'|format(preset.bar_width_ratio) }}</span></label>
+                                        <input type="range" class="form-range" id="bar_width_ratio" name="bar_width_ratio" min="0.1" max="0.95" step="0.05" value="{{ preset.bar_width_ratio }}" oninput="document.getElementById('bar_width_ratio_value').textContent = parseFloat(this.value).toFixed(2)">
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="bar_height_scale" class="form-label">Bar Height Scale: <span id="bar_height_scale_value">{{ '%.2f'|format(preset.bar_height_scale) }}</span></label>
+                                        <input type="range" class="form-range" id="bar_height_scale" name="bar_height_scale" min="0.5" max="2.0" step="0.1" value="{{ preset.bar_height_scale }}" oninput="document.getElementById('bar_height_scale_value').textContent = parseFloat(this.value).toFixed(2)">
+                                    </div>
+                                    
+                                    <div class="mb-3 form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="glow_effect" name="glow_effect" {{ 'checked' if preset.glow_effect else '' }} onchange="toggleGlowSettings(this.checked)">
+                                        <label class="form-check-label" for="glow_effect">Enable Glow Effect</label>
+                                    </div>
+                                    
+                                    <div id="glowSettings" class="mb-3 ps-4 {{ '' if preset.glow_effect else 'd-none' }}">
+                                        <label for="glow_intensity" class="form-label">Glow Intensity: <span id="glow_intensity_value">{{ '%.2f'|format(preset.glow_intensity) }}</span></label>
+                                        <input type="range" class="form-range" id="glow_intensity" name="glow_intensity" min="0.1" max="1.0" step="0.1" value="{{ preset.glow_intensity }}" oninput="document.getElementById('glow_intensity_value').textContent = parseFloat(this.value).toFixed(2)">
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="responsiveness" class="form-label">Responsiveness: <span id="responsiveness_value">{{ '%.2f'|format(preset.responsiveness) }}</span></label>
+                                        <input type="range" class="form-range" id="responsiveness" name="responsiveness" min="0.5" max="2.0" step="0.1" value="{{ preset.responsiveness }}" oninput="document.getElementById('responsiveness_value').textContent = parseFloat(this.value).toFixed(2)">
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="smoothing" class="form-label">Smoothing: <span id="smoothing_value">{{ '%.2f'|format(preset.smoothing) }}</span></label>
+                                        <input type="range" class="form-range" id="smoothing" name="smoothing" min="0.0" max="0.9" step="0.1" value="{{ preset.smoothing }}" oninput="document.getElementById('smoothing_value').textContent = parseFloat(this.value).toFixed(2)">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row mb-4">
+                                <div class="col-12">
+                                    <h4>Position Settings</h4>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="vertical_position" class="form-label">Vertical Position: <span id="vertical_position_value">{{ '%.2f'|format(preset.vertical_position) }}</span></label>
+                                        <input type="range" class="form-range" id="vertical_position" name="vertical_position" min="0.0" max="1.0" step="0.05" value="{{ preset.vertical_position }}" oninput="document.getElementById('vertical_position_value').textContent = parseFloat(this.value).toFixed(2)">
+                                        <small class="form-text text-muted">0 = top, 0.5 = center, 1 = bottom</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="horizontal_margin" class="form-label">Horizontal Margin: <span id="horizontal_margin_value">{{ '%.2f'|format(preset.horizontal_margin) }}</span></label>
+                                        <input type="range" class="form-range" id="horizontal_margin" name="horizontal_margin" min="0.0" max="0.3" step="0.05" value="{{ preset.horizontal_margin }}" oninput="document.getElementById('horizontal_margin_value').textContent = parseFloat(this.value).toFixed(2)">
+                                        <small class="form-text text-muted">Margin from sides (0.0-0.3)</small>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="d-flex justify-content-between">
+                                <a href="{{ url_for('presets') }}" class="btn btn-secondary">Cancel</a>
+                                <button type="submit" class="btn btn-primary">{{ 'Create Preset' if is_new else 'Save Changes' }}</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function updateColorPreview(color) {
+            document.getElementById('colorPreview').style.backgroundColor = color;
+            document.getElementById('colorText').value = color;
+        }
+        
+        function updateColorInput(text) {
+            const colorInput = document.getElementById('color');
+            colorInput.value = text;
+            document.getElementById('colorPreview').style.backgroundColor = text;
+        }
+        
+        function toggleGlowSettings(enabled) {
+            const glowSettings = document.getElementById('glowSettings');
+            if (enabled) {
+                glowSettings.classList.remove('d-none');
+            } else {
+                glowSettings.classList.add('d-none');
+            }
+        }
+    </script>
+</body>
+</html>

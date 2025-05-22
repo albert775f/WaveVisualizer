@@ -12,7 +12,22 @@ import gc  # For garbage collection
 
 logger = logging.getLogger(__name__)
 
-def process_audio_visualization(audio_path, image_path, output_path, color='#00FFFF', fps=30):
+def process_audio_visualization(
+    audio_path, 
+    image_path, 
+    output_path, 
+    color='#00FFFF', 
+    fps=30,
+    bar_count=64,
+    bar_width_ratio=0.8,
+    bar_height_scale=1.0,
+    glow_effect=False,
+    glow_intensity=0.5,
+    responsiveness=1.0,
+    smoothing=0.2,
+    vertical_position=0.5,
+    horizontal_margin=0.1
+):
     """
     Process audio file to generate visualization frames, overlay on image, and create video
     
@@ -92,20 +107,36 @@ def process_audio_visualization(audio_path, image_path, output_path, color='#00F
             ax.imshow(img, origin='upper')
             
             # Calculate frequency bins to show (focus on audible range)
-            # Get reduced number of frequency bins (more visually appealing)
+            # Use the bar_count parameter for the number of frequency bins
             n_bins = min(128, D_db.shape[0])
             D_db_subset = D_db[:n_bins, :]
             
             # Calculate average amplitude across time for each frequency bin
-            avg_amplitudes = np.mean(D_db_subset, axis=1)
+            # Apply responsiveness multiplier
+            avg_amplitudes = np.mean(D_db_subset, axis=1) * responsiveness
             
             # Normalize to 0-1 range for visualization
             normalized_amps = (avg_amplitudes - np.min(avg_amplitudes)) / (np.max(avg_amplitudes) - np.min(avg_amplitudes))
             
-            # Calculate bar positions and heights
-            n_bars = 64  # Number of bars to display
-            bar_width = (img_width * 0.8) / n_bars
-            bar_spacing = (img_width * 0.8) / (n_bars - 1) - bar_width
+            # Apply smoothing between frames if needed
+            prev_heights = getattr(process_audio_visualization, 'prev_heights', None)
+            if i > 0 and smoothing > 0 and prev_heights is not None:
+                try:
+                    # Apply smoothing between frames
+                    normalized_amps = prev_heights * smoothing + normalized_amps * (1 - smoothing)
+                except Exception as e:
+                    logger.warning(f"Smoothing error: {e}")
+            
+            # Store current heights for next frame
+            process_audio_visualization.prev_heights = normalized_amps.copy()
+            
+            # Calculate bar positions and heights using custom parameters
+            n_bars = bar_count  # Number of bars to display
+            
+            # Adjust width based on ratio parameter
+            effective_width = img_width * (1 - 2 * horizontal_margin)
+            bar_width = (effective_width * bar_width_ratio) / n_bars
+            bar_spacing = (effective_width * (1 - bar_width_ratio)) / (n_bars - 1)
             
             # Resample to desired number of bars
             bars_heights = np.interp(
@@ -114,21 +145,54 @@ def process_audio_visualization(audio_path, image_path, output_path, color='#00F
                 normalized_amps
             )
             
-            # Draw bars
-            margin_x = img_width * 0.1  # 10% margin on each side
-            margin_y = img_height * 0.1  # 10% margin on top and bottom
-            max_bar_height = img_height * 0.8
+            # Apply height scaling
+            bars_heights = bars_heights * bar_height_scale
             
+            # Determine vertical position
+            # vertical_position: 0.0 = top, 1.0 = bottom, 0.5 = center
+            margin_x = img_width * horizontal_margin  # Horizontal margin
+            
+            # Calculate vertical positioning
+            bar_section_height = img_height * 0.8  # Height of the section where bars appear
+            base_y = img_height * (0.1 + 0.8 * vertical_position)
+            max_bar_height = bar_section_height * 0.8
+            
+            # Draw bars
             for j, height in enumerate(bars_heights):
                 bar_height = height * max_bar_height
                 x_pos = margin_x + j * (bar_width + bar_spacing)
                 
-                # Draw bar as rectangle
-                import matplotlib.patches as patches
+                # Calculate y position based on vertical_position
+                if vertical_position <= 0.5:
+                    # Top half - bars go down from position
+                    y_pos = base_y
+                    rect_y = y_pos
+                    rect_height = bar_height
+                else:
+                    # Bottom half - bars go up from position
+                    y_pos = base_y - bar_height
+                    rect_y = y_pos
+                    rect_height = bar_height
+                
+                # Add glow effect if enabled
+                if glow_effect:
+                    # Create a larger, more transparent rectangle for glow
+                    glow_extra = bar_width * 0.5 * glow_intensity
+                    glow_rect = patches.Rectangle(
+                        (x_pos - glow_extra, rect_y - glow_extra),
+                        bar_width + 2 * glow_extra,
+                        rect_height + 2 * glow_extra,
+                        color=color,
+                        alpha=0.3 * glow_intensity,
+                        edgecolor='none'
+                    )
+                    ax.add_patch(glow_rect)
+                
+                # Draw bar as rectangle with customized alpha
                 rect = patches.Rectangle(
-                    (x_pos, (img_height - margin_y) - bar_height),
+                    (x_pos, rect_y),
                     bar_width,
-                    bar_height,
+                    rect_height,
                     color=color,
                     alpha=0.7
                 )
