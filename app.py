@@ -1,6 +1,6 @@
 import os
 import uuid
-import json
+import logging
 import tempfile
 import datetime
 from pathlib import Path
@@ -8,32 +8,58 @@ from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify
 from werkzeug.exceptions import RequestEntityTooLarge
 import librosa
+import shutil
+import time
 
 from models import db, Preset, AudioFile, ImageFile, OutputVideo
 from utils.audio_processor import process_audio_visualization
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('app.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
 # Initialize Flask app
 app = Flask(__name__)
-app.secret_key = os.environ.get("SESSION_SECRET", "dev_secret_key")
+app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key")
 
-# Configure database
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-db.init_app(app)
-
-# Configure upload settings
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload size (Replit limitation)
-app.config['UPLOAD_FOLDER_AUDIO'] = os.path.join(os.getcwd(), 'uploads', 'audio')
-app.config['UPLOAD_FOLDER_IMAGES'] = os.path.join(os.getcwd(), 'uploads', 'images')
-app.config['OUTPUT_FOLDER'] = os.path.join(os.getcwd(), 'output')
-
-# Ensure directories exist
-for folder in [app.config['UPLOAD_FOLDER_AUDIO'], app.config['UPLOAD_FOLDER_IMAGES'], app.config['OUTPUT_FOLDER']]:
-    os.makedirs(folder, exist_ok=True)
-
-# Allowed file extensions
+# Configure upload settings - use absolute paths for more reliability
+base_dir = os.path.abspath(os.path.dirname(__file__))
+UPLOAD_FOLDER = os.path.join(base_dir, 'uploads')
+OUTPUT_FOLDER = os.path.join(base_dir, 'output')
 ALLOWED_AUDIO_EXTENSIONS = {'wav'}
 ALLOWED_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png'}
+MAX_CONTENT_LENGTH = 25 * 1024 * 1024  # 25 MB max upload size
+
+# Create necessary directories with proper permissions
+for folder in [UPLOAD_FOLDER, OUTPUT_FOLDER]:
+    os.makedirs(folder, exist_ok=True)
+    # Ensure proper permissions
+    os.chmod(folder, 0o755)
+
+# Configure Flask
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['OUTPUT_FOLDER'] = OUTPUT_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
+
+def cleanup_old_files():
+    """Clean up files older than 24 hours"""
+    try:
+        current_time = time.time()
+        for folder in [UPLOAD_FOLDER, OUTPUT_FOLDER]:
+            for filename in os.listdir(folder):
+                filepath = os.path.join(folder, filename)
+                if os.path.getmtime(filepath) < current_time - 86400:  # 24 hours
+                    os.remove(filepath)
+                    logger.info(f"Cleaned up old file: {filepath}")
+    except Exception as e:
+        logger.error(f"Error during cleanup: {str(e)}")
 
 def allowed_audio_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_AUDIO_EXTENSIONS
@@ -174,185 +200,103 @@ def delete_preset(preset_id):
     flash(f'Preset "{name}" deleted successfully', 'success')
     return redirect(url_for('presets'))
 
-@app.route('/upload/audio', methods=['POST'])
-def upload_audio():
-    """Handle audio file upload"""
-    if 'audio' not in request.files:
-        flash('No file part', 'danger')
-        return redirect(request.referrer or url_for('library'))
-    
-    file = request.files['audio']
-    
-    if file.filename == '':
-        flash('No audio file selected', 'danger')
-        return redirect(request.referrer or url_for('library'))
-    
-    if file and file.filename and allowed_audio_file(file.filename):
-        # Create a unique filename
-        filename = secure_filename(file.filename)
-        display_name = filename
-        unique_filename = f"{uuid.uuid4()}.wav"
-        file_path = os.path.join(app.config['UPLOAD_FOLDER_AUDIO'], unique_filename)
-        
-        file.save(file_path)
-        
-        # Get audio info
-        try:
-            y, sr = librosa.load(file_path, sr=None)
-            duration = librosa.get_duration(y=y, sr=sr)
-            file_size = os.path.getsize(file_path)
-            
-            # Save to database
-            audio_file = AudioFile()
-            audio_file.filename = unique_filename
-            audio_file.display_name = display_name
-            audio_file.file_size = file_size
-            audio_file.duration = duration
-            db.session.add(audio_file)
-            db.session.commit()
-            
-            flash('Audio file uploaded successfully', 'success')
-        except Exception as e:
-            flash(f'Error processing audio file: {str(e)}', 'danger')
-            if os.path.exists(file_path):
-                os.remove(file_path)
-    else:
-        flash('Invalid audio file format. Only WAV files are allowed.', 'danger')
-    
-    return redirect(request.referrer or url_for('library'))
-
-@app.route('/upload/image', methods=['POST'])
-def upload_image():
-    """Handle image file upload"""
-    if 'image' not in request.files:
-        flash('No file part', 'danger')
-        return redirect(request.referrer or url_for('library'))
-    
-    file = request.files['image']
-    
-    if file.filename == '':
-        flash('No image file selected', 'danger')
-        return redirect(request.referrer or url_for('library'))
-    
-    if file and allowed_image_file(file.filename):
-        # Create a unique filename
-        filename = secure_filename(file.filename)
-        display_name = filename
-        unique_filename = f"{uuid.uuid4()}.{filename.rsplit('.', 1)[1].lower()}"
-        file_path = os.path.join(app.config['UPLOAD_FOLDER_IMAGES'], unique_filename)
-        
-        file.save(file_path)
-        
-        # Get image info
-        try:
-            from PIL import Image
-            with Image.open(file_path) as img:
-                width, height = img.size
-            
-            file_size = os.path.getsize(file_path)
-            
-            # Save to database
-            image_file = ImageFile()
-            image_file.filename = unique_filename
-            image_file.display_name = display_name
-            image_file.width = width
-            image_file.height = height
-            image_file.file_size = file_size
-            db.session.add(image_file)
-            db.session.commit()
-            
-            flash('Image file uploaded successfully', 'success')
-        except Exception as e:
-            flash(f'Error processing image file: {str(e)}', 'danger')
-            if os.path.exists(file_path):
-                os.remove(file_path)
-    else:
-        flash('Invalid image file format. Only JPG and PNG files are allowed.', 'danger')
-    
-    return redirect(request.referrer or url_for('library'))
-
-@app.route('/create/video', methods=['POST'])
-def create_video():
-    """Create a video from selected audio and image files"""
-    # Get form data
-    audio_id = request.form.get('audio_id')
-    image_id = request.form.get('image_id')
-    preset_id = request.form.get('preset_id')
-    
-    if not audio_id:
-        flash('No audio file selected', 'danger')
-        return redirect(request.referrer or url_for('index'))
-    
-    if not image_id:
-        flash('No image file selected', 'danger')
-        return redirect(request.referrer or url_for('index'))
-    
-    # Get files from database
-    audio_file = AudioFile.query.get_or_404(audio_id)
-    image_file = ImageFile.query.get_or_404(image_id)
-    preset = Preset.query.get_or_404(preset_id) if preset_id else Preset.query.first()
-    
-    audio_path = os.path.join(app.config['UPLOAD_FOLDER_AUDIO'], audio_file.filename)
-    image_path = os.path.join(app.config['UPLOAD_FOLDER_IMAGES'], image_file.filename)
-    
-    if not os.path.exists(audio_path):
-        flash('Audio file not found on server', 'danger')
-        return redirect(request.referrer or url_for('index'))
-    
-    if not os.path.exists(image_path):
-        flash('Image file not found on server', 'danger')
-        return redirect(request.referrer or url_for('index'))
-    
-    # Create a unique filename for the output video
-    output_filename = f"{uuid.uuid4()}.mp4"
-    output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
-    
+@app.route('/upload', methods=['POST'])
+def upload_files():
+    """Handle file upload and processing"""
     try:
-        # Process the audio and create the video
+        logger.info("Upload request received")
+        
+        # Check audio file
+        if 'audio_file' not in request.files:
+            flash('Please select an audio file', 'error')
+            return redirect(url_for('index'))
+            
+        audio_file = request.files['audio_file']
+        if audio_file.filename == '':
+            flash('Please select an audio file', 'error')
+            return redirect(url_for('index'))
+            
+        if audio_file.filename and not allowed_audio_file(audio_file.filename):
+            flash('Only WAV audio files are allowed', 'error')
+            return redirect(url_for('index'))
+            
+        # Check image file
+        if 'image_file' not in request.files:
+            flash('Please select a background image', 'error')
+            return redirect(url_for('index'))
+            
+        image_file = request.files['image_file']
+        if image_file.filename == '':
+            flash('Please select a background image', 'error')
+            return redirect(url_for('index'))
+            
+        if image_file.filename and not allowed_image_file(image_file.filename):
+            flash('Only JPG and PNG images are allowed', 'error')
+            return redirect(url_for('index'))
+        
+        # Create unique ID and save files
+        unique_id = str(uuid.uuid4())
+        audio_filename = secure_filename(unique_id + '_audio.wav')
+        
+        # Get file extension safely
+        if image_file.filename and '.' in image_file.filename:
+            ext = image_file.filename.rsplit('.', 1)[1].lower()
+        else:
+            ext = 'jpg'  # Default extension
+            
+        image_filename = secure_filename(unique_id + '_image.' + ext)
+        
+        audio_path = os.path.join(UPLOAD_FOLDER, audio_filename)
+        image_path = os.path.join(UPLOAD_FOLDER, image_filename)
+        
+        logger.info(f"Saving files: {audio_path}, {image_path}")
+        audio_file.save(audio_path)
+        image_file.save(image_path)
+        
+        # Get color from form
+        color = request.form.get('visualization_color', '#00FFFF')
+        
+        # Generate output path
+        output_filename = secure_filename(unique_id + '_output.mp4')
+        output_path = os.path.join(OUTPUT_FOLDER, output_filename)
+        
+        logger.info(f"Processing visualization with color: {color}")
+        
+        # Process visualization
         process_audio_visualization(
             audio_path=audio_path,
             image_path=image_path,
             output_path=output_path,
-            color=preset.color,
-            fps=30,
-            bar_count=preset.bar_count,
-            bar_width_ratio=preset.bar_width_ratio,
-            bar_height_scale=preset.bar_height_scale,
-            glow_effect=preset.glow_effect,
-            glow_intensity=preset.glow_intensity,
-            responsiveness=preset.responsiveness,
-            smoothing=preset.smoothing,
-            vertical_position=preset.vertical_position,
-            horizontal_margin=preset.horizontal_margin
+            color=color
         )
         
-        # Create output video record
-        output_video = OutputVideo()
-        output_video.filename = output_filename
-        output_video.display_name = f"{audio_file.display_name}_{image_file.display_name}.mp4"
-        output_video.audio_file_id = audio_file.id
-        output_video.image_file_id = image_file.id
-        output_video.preset_id = preset.id if preset_id else None
-        db.session.add(output_video)
-        db.session.commit()
+        logger.info(f"Video created: {output_filename}")
         
-        flash('Video created successfully', 'success')
-        return redirect(url_for('library'))
+        # Clean up input files after processing
+        os.remove(audio_path)
+        os.remove(image_path)
+        
+        # Redirect to download page
+        return render_template('success.html', filename=output_filename)
+        
     except Exception as e:
-        flash(f'Error creating video: {str(e)}', 'danger')
-        if os.path.exists(output_path):
-            os.remove(output_path)
-        return redirect(request.referrer or url_for('index'))
+        logger.error(f"Error: {str(e)}", exc_info=True)
+        flash('An error occurred while processing your files. Please try again.', 'error')
+        return redirect(url_for('index'))
 
-@app.route('/download/video/<filename>')
+@app.route('/download/<filename>')
 def download_file(filename):
-    """Download an output video file"""
-    return send_file(os.path.join(app.config['OUTPUT_FOLDER'], filename), as_attachment=True)
+    try:
+        return send_file(os.path.join(OUTPUT_FOLDER, filename), as_attachment=True)
+    except Exception as e:
+        logger.error(f"Download error: {str(e)}")
+        flash('Error downloading file', 'error')
+        return redirect(url_for('index'))
 
 @app.route('/images/<filename>')
 def get_image(filename):
     """Serve an image file for display"""
-    return send_file(os.path.join(app.config['UPLOAD_FOLDER_IMAGES'], filename))
+    return send_file(os.path.join(UPLOAD_FOLDER, filename))
 
 @app.route('/delete/audio/<int:audio_id>', methods=['POST'])
 def delete_audio(audio_id):
@@ -360,13 +304,13 @@ def delete_audio(audio_id):
     audio_file = AudioFile.query.get_or_404(audio_id)
     
     # Delete the actual file
-    file_path = os.path.join(app.config['UPLOAD_FOLDER_AUDIO'], audio_file.filename)
+    file_path = os.path.join(UPLOAD_FOLDER, audio_file.filename)
     if os.path.exists(file_path):
         os.remove(file_path)
     
     # Delete associated videos
     for video in audio_file.videos:
-        video_path = os.path.join(app.config['OUTPUT_FOLDER'], video.filename)
+        video_path = os.path.join(OUTPUT_FOLDER, video.filename)
         if os.path.exists(video_path):
             os.remove(video_path)
         db.session.delete(video)
@@ -384,13 +328,13 @@ def delete_image(image_id):
     image_file = ImageFile.query.get_or_404(image_id)
     
     # Delete the actual file
-    file_path = os.path.join(app.config['UPLOAD_FOLDER_IMAGES'], image_file.filename)
+    file_path = os.path.join(UPLOAD_FOLDER, image_file.filename)
     if os.path.exists(file_path):
         os.remove(file_path)
     
     # Delete associated videos
     for video in image_file.videos:
-        video_path = os.path.join(app.config['OUTPUT_FOLDER'], video.filename)
+        video_path = os.path.join(OUTPUT_FOLDER, video.filename)
         if os.path.exists(video_path):
             os.remove(video_path)
         db.session.delete(video)
@@ -408,7 +352,7 @@ def delete_video(video_id):
     video_file = OutputVideo.query.get_or_404(video_id)
     
     # Delete the actual file
-    file_path = os.path.join(app.config['OUTPUT_FOLDER'], video_file.filename)
+    file_path = os.path.join(OUTPUT_FOLDER, video_file.filename)
     if os.path.exists(file_path):
         os.remove(file_path)
     
@@ -421,14 +365,14 @@ def delete_video(video_id):
 
 @app.errorhandler(RequestEntityTooLarge)
 def request_entity_too_large(error):
-    flash('File too large. Maximum size is 32MB.', 'danger')
-    return redirect(request.referrer or url_for('index'))
+    flash('File too large. Maximum size is 25MB.', 'error')
+    return redirect(url_for('index'))
 
 @app.errorhandler(500)
 def internal_server_error(error):
-    app.logger.error(f'Server Error: {error}')
-    flash('An unexpected error occurred. Please try again.', 'danger')
-    return redirect(request.referrer or url_for('index'))
+    logger.error(f"Internal server error: {str(error)}")
+    flash('An internal server error occurred. Please try again.', 'error')
+    return redirect(url_for('index'))
 
 # Create database tables
 with app.app_context():
@@ -439,3 +383,9 @@ with app.app_context():
         default_preset = Preset(name="Default")
         db.session.add(default_preset)
         db.session.commit()
+
+if __name__ == '__main__':
+    # Clean up old files before starting
+    cleanup_old_files()
+    # Start the application
+    app.run(host='0.0.0.0', port=5000, debug=False)
