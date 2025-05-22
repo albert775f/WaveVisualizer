@@ -58,119 +58,345 @@ def allowed_image_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_IMAGE_EXTENSIONS
 
 
+# Helper functions to manage metadata
+def get_metadata():
+    try:
+        with open(METADATA_FILE, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        # If file is missing or corrupted, create a new one
+        metadata = {
+            'audio_files': [],
+            'image_files': [],
+            'output_files': []
+        }
+        with open(METADATA_FILE, 'w') as f:
+            json.dump(metadata, f)
+        return metadata
+
+def save_metadata(metadata):
+    with open(METADATA_FILE, 'w') as f:
+        json.dump(metadata, f, indent=2)
+
+def format_file_size(size_bytes):
+    """Format file size in human-readable format"""
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    else:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+
 @app.route('/')
 def index():
-    return render_template('index.html')
+    # Redirect to the library page
+    return redirect(url_for('library'))
 
+@app.route('/library')
+def library():
+    """Media library page for managing files"""
+    # Get metadata for all files
+    metadata = get_metadata()
+    
+    return render_template('library.html', 
+                          audio_files=metadata['audio_files'],
+                          image_files=metadata['image_files'],
+                          output_files=metadata['output_files'])
 
-@app.route('/upload', methods=['POST'])
-def upload_files():
-    """Handle file upload and processing"""
+@app.route('/upload_audio', methods=['POST'])
+def upload_audio():
+    """Handle audio file upload"""
     try:
-        logger.info("Upload request received")
-        
-        # Check audio file
+        # Check if audio file was uploaded
         if 'audio_file' not in request.files:
-            flash('Please select an audio file', 'error')
-            return redirect(url_for('index'))
+            flash('No audio file provided', 'error')
+            return redirect(url_for('library'))
             
         audio_file = request.files['audio_file']
-        if audio_file.filename == '':
-            flash('Please select an audio file', 'error')
-            return redirect(url_for('index'))
+        if not audio_file.filename or audio_file.filename == '':
+            flash('No audio file selected', 'error')
+            return redirect(url_for('library'))
             
-        # Check if filename exists before validation
-        if audio_file.filename and not allowed_audio_file(audio_file.filename):
+        # Validate file type
+        if not allowed_audio_file(audio_file.filename):
             flash('Only WAV audio files are allowed', 'error')
-            return redirect(url_for('index'))
+            return redirect(url_for('library'))
             
-        # Check image file
+        # Check file size
+        file_size = 0
+        audio_file.seek(0, os.SEEK_END)
+        file_size = audio_file.tell()
+        audio_file.seek(0)  # Reset file pointer
+        
+        if file_size > MAX_AUDIO_SIZE:
+            flash(f'Audio file too large. Maximum size is {format_file_size(MAX_AUDIO_SIZE)}', 'error')
+            return redirect(url_for('library'))
+            
+        # Generate a unique filename
+        unique_id = str(uuid.uuid4())
+        original_ext = audio_file.filename.rsplit('.', 1)[1].lower()
+        audio_filename = f"{unique_id}.{original_ext}"
+        audio_path = os.path.join(AUDIO_FOLDER, audio_filename)
+        
+        # Get display name from form or use original filename
+        display_name = request.form.get('audio_name', '').strip()
+        if not display_name:
+            display_name = os.path.splitext(audio_file.filename)[0]
+            
+        # Save the file
+        logger.info(f"Saving audio file: {audio_path}")
+        audio_file.save(audio_path)
+        
+        # Update metadata
+        metadata = get_metadata()
+        metadata['audio_files'].append({
+            'filename': audio_filename,
+            'display_name': display_name,
+            'original_name': audio_file.filename,
+            'size': format_file_size(file_size),
+            'uploaded_at': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        })
+        save_metadata(metadata)
+        
+        flash('Audio file uploaded successfully', 'success')
+        return redirect(url_for('library'))
+        
+    except Exception as e:
+        logger.error(f"Error uploading audio: {str(e)}", exc_info=True)
+        flash(f'Error uploading audio file: {str(e)}', 'error')
+        return redirect(url_for('library'))
+
+@app.route('/upload_image', methods=['POST'])
+def upload_image():
+    """Handle image file upload"""
+    try:
+        # Check if image file was uploaded
         if 'image_file' not in request.files:
-            flash('Please select a background image', 'error')
-            return redirect(url_for('index'))
+            flash('No image file provided', 'error')
+            return redirect(url_for('library'))
             
         image_file = request.files['image_file']
-        if image_file.filename == '':
-            flash('Please select a background image', 'error')
-            return redirect(url_for('index'))
+        if not image_file.filename or image_file.filename == '':
+            flash('No image file selected', 'error')
+            return redirect(url_for('library'))
             
-        # Check if filename exists before validation
-        if image_file.filename and not allowed_image_file(image_file.filename):
+        # Validate file type
+        if not allowed_image_file(image_file.filename):
             flash('Only JPG and PNG images are allowed', 'error')
-            return redirect(url_for('index'))
-        
-        # Create unique ID and save files
-        unique_id = str(uuid.uuid4())
-        audio_filename = unique_id + '_audio.wav'
-        
-        # Get file extension safely
-        if image_file.filename and '.' in image_file.filename:
-            ext = image_file.filename.rsplit('.', 1)[1].lower()
-        else:
-            ext = 'jpg'  # Default extension
+            return redirect(url_for('library'))
             
-        image_filename = unique_id + '_image.' + ext
+        # Check file size
+        file_size = 0
+        image_file.seek(0, os.SEEK_END)
+        file_size = image_file.tell()
+        image_file.seek(0)  # Reset file pointer
         
-        audio_path = os.path.join(UPLOAD_FOLDER, audio_filename)
-        image_path = os.path.join(UPLOAD_FOLDER, image_filename)
+        if file_size > MAX_IMAGE_SIZE:
+            flash(f'Image file too large. Maximum size is {format_file_size(MAX_IMAGE_SIZE)}', 'error')
+            return redirect(url_for('library'))
+            
+        # Generate a unique filename
+        unique_id = str(uuid.uuid4())
+        original_ext = image_file.filename.rsplit('.', 1)[1].lower()
+        image_filename = f"{unique_id}.{original_ext}"
+        image_path = os.path.join(IMAGE_FOLDER, image_filename)
         
-        logger.info(f"Saving files: {audio_path}, {image_path}")
-        audio_file.save(audio_path)
+        # Get display name from form or use original filename
+        display_name = request.form.get('image_name', '').strip()
+        if not display_name:
+            display_name = os.path.splitext(image_file.filename)[0]
+            
+        # Save the file
+        logger.info(f"Saving image file: {image_path}")
         image_file.save(image_path)
         
-        # Get color from form
-        color = request.form.get('visualization_color', '#00FFFF')
+        # Update metadata
+        metadata = get_metadata()
+        metadata['image_files'].append({
+            'filename': image_filename,
+            'display_name': display_name,
+            'original_name': image_file.filename,
+            'size': format_file_size(file_size),
+            'uploaded_at': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        })
+        save_metadata(metadata)
         
-        # Generate output path
-        output_filename = unique_id + '_output.mp4'
+        flash('Image file uploaded successfully', 'success')
+        return redirect(url_for('library'))
+        
+    except Exception as e:
+        logger.error(f"Error uploading image: {str(e)}", exc_info=True)
+        flash(f'Error uploading image file: {str(e)}', 'error')
+        return redirect(url_for('library'))
+
+@app.route('/create_video', methods=['POST'])
+def create_video():
+    """Create a video from selected audio and image files"""
+    try:
+        # Get selected files from the form
+        audio_filename = request.form.get('audio_filename')
+        image_filename = request.form.get('image_filename')
+        visualization_color = request.form.get('visualization_color', '#00FFFF')
+        output_name = request.form.get('output_name', '').strip()
+        
+        if not audio_filename or not image_filename:
+            flash('Please select both an audio file and a background image', 'error')
+            return redirect(url_for('library'))
+            
+        # Get full paths to files
+        audio_path = os.path.join(AUDIO_FOLDER, audio_filename)
+        image_path = os.path.join(IMAGE_FOLDER, image_filename)
+        
+        # Check if files exist
+        if not os.path.exists(audio_path):
+            flash('The selected audio file could not be found', 'error')
+            return redirect(url_for('library'))
+            
+        if not os.path.exists(image_path):
+            flash('The selected background image could not be found', 'error')
+            return redirect(url_for('library'))
+            
+        # Generate a unique filename for output
+        unique_id = str(uuid.uuid4())
+        output_filename = f"{unique_id}.mp4"
         output_path = os.path.join(OUTPUT_FOLDER, output_filename)
         
-        logger.info(f"Processing visualization with color: {color}")
-        
-        # Process visualization
+        # Process the visualization
+        logger.info(f"Creating visualization with color: {visualization_color}")
         process_audio_visualization(
             audio_path=audio_path,
             image_path=image_path,
             output_path=output_path,
-            color=color
+            color=visualization_color
         )
         
-        logger.info(f"Video created: {output_filename}")
+        # Get display name for the output file
+        if not output_name:
+            # If no name provided, use audio + image names
+            metadata = get_metadata()
+            audio_info = next((a for a in metadata['audio_files'] if a['filename'] == audio_filename), None)
+            image_info = next((i for i in metadata['image_files'] if i['filename'] == image_filename), None)
+            
+            audio_name = audio_info['display_name'] if audio_info else 'Audio'
+            image_name = image_info['display_name'] if image_info else 'Image'
+            output_name = f"{audio_name} + {image_name}"
         
-        # Redirect to download page
-        return render_template('success.html', filename=output_filename)
+        # Update metadata
+        metadata = get_metadata()
+        metadata['output_files'].append({
+            'filename': output_filename,
+            'display_name': output_name,
+            'audio_filename': audio_filename,
+            'image_filename': image_filename,
+            'color': visualization_color,
+            'created_at': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        })
+        save_metadata(metadata)
+        
+        flash('Video created successfully!', 'success')
+        return redirect(url_for('library'))
         
     except Exception as e:
-        logger.error(f"Error: {str(e)}", exc_info=True)
-        flash('An error occurred while processing your files. Please try again.', 'error')
-        return redirect(url_for('index'))
+        logger.error(f"Error creating video: {str(e)}", exc_info=True)
+        flash(f'Error creating video: {str(e)}', 'error')
+        return redirect(url_for('library'))
 
 
 @app.route('/download/<filename>')
 def download_file(filename):
+    """Download an output video file"""
     return send_from_directory(app.config['OUTPUT_FOLDER'], filename, as_attachment=True)
 
+@app.route('/get_image/<filename>')
+def get_image(filename):
+    """Serve an image file for display"""
+    return send_from_directory(app.config['IMAGE_FOLDER'], filename)
 
-# Simple route to check if a file exists
-@app.route('/file_exists/<filename>')
-def file_exists(filename):
-    from flask import jsonify
-    file_path = os.path.join(OUTPUT_FOLDER, filename)
-    exists = os.path.exists(file_path)
-    return jsonify({"exists": exists})
+@app.route('/delete_audio/<filename>')
+def delete_audio(filename):
+    """Delete an audio file"""
+    try:
+        file_path = os.path.join(AUDIO_FOLDER, filename)
+        
+        # Check if file exists
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            
+            # Update metadata
+            metadata = get_metadata()
+            metadata['audio_files'] = [f for f in metadata['audio_files'] if f['filename'] != filename]
+            save_metadata(metadata)
+            
+            flash('Audio file deleted successfully', 'success')
+        else:
+            flash('Audio file not found', 'error')
+            
+        return redirect(url_for('library'))
+    except Exception as e:
+        logger.error(f"Error deleting audio file: {str(e)}", exc_info=True)
+        flash(f'Error deleting audio file: {str(e)}', 'error')
+        return redirect(url_for('library'))
 
+@app.route('/delete_image/<filename>')
+def delete_image(filename):
+    """Delete an image file"""
+    try:
+        file_path = os.path.join(IMAGE_FOLDER, filename)
+        
+        # Check if file exists
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            
+            # Update metadata
+            metadata = get_metadata()
+            metadata['image_files'] = [f for f in metadata['image_files'] if f['filename'] != filename]
+            save_metadata(metadata)
+            
+            flash('Image file deleted successfully', 'success')
+        else:
+            flash('Image file not found', 'error')
+            
+        return redirect(url_for('library'))
+    except Exception as e:
+        logger.error(f"Error deleting image file: {str(e)}", exc_info=True)
+        flash(f'Error deleting image file: {str(e)}', 'error')
+        return redirect(url_for('library'))
+
+@app.route('/delete_video/<filename>')
+def delete_video(filename):
+    """Delete a video file"""
+    try:
+        file_path = os.path.join(OUTPUT_FOLDER, filename)
+        
+        # Check if file exists
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            
+            # Update metadata
+            metadata = get_metadata()
+            metadata['output_files'] = [f for f in metadata['output_files'] if f['filename'] != filename]
+            save_metadata(metadata)
+            
+            flash('Video deleted successfully', 'success')
+        else:
+            flash('Video file not found', 'error')
+            
+        return redirect(url_for('library'))
+    except Exception as e:
+        logger.error(f"Error deleting video file: {str(e)}", exc_info=True)
+        flash(f'Error deleting video file: {str(e)}', 'error')
+        return redirect(url_for('library'))
 
 # Error handlers
 @app.errorhandler(413)
 def request_entity_too_large(error):
-    flash('File too large. Maximum size is 50MB.', 'error')
-    return redirect(url_for('index'))
-
+    flash('File too large. Please check size limits.', 'error')
+    return redirect(url_for('library'))
 
 @app.errorhandler(500)
 def internal_server_error(error):
     flash('An internal server error occurred. Please try again.', 'error')
-    return redirect(url_for('index'))
+    return redirect(url_for('library'))
 
 
 if __name__ == '__main__':
