@@ -4,9 +4,11 @@ import librosa
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
+import matplotlib.patches as patches
 import subprocess
 import tempfile
 import logging
+import gc  # For garbage collection
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +103,8 @@ def process_audio_visualization(audio_path, image_path, output_path, color='#00F
                 x_pos = margin_x + j * (bar_width + bar_spacing)
                 
                 # Draw bar as rectangle
-                rect = plt.Rectangle(
+                import matplotlib.patches as patches
+                rect = patches.Rectangle(
                     (x_pos, (img_height - margin_y) - bar_height),
                     bar_width,
                     bar_height,
@@ -181,16 +184,17 @@ def process_audio_visualization(audio_path, image_path, output_path, color='#00F
         return True
         
     except Exception as e:
-        logger.error(f"Error in process_audio_visualization: {str(e)}")
+        logger.error(f"Error in process_audio_visualization: {str(e)}", exc_info=True)
         # Clean up any temporary files
-        if 'frames_dir' in locals() and os.path.exists(frames_dir):
-            for file in os.listdir(frames_dir):
+        frames_dir_var = locals().get('frames_dir')
+        if frames_dir_var and os.path.exists(frames_dir_var):
+            for file in os.listdir(frames_dir_var):
                 try:
-                    os.remove(os.path.join(frames_dir, file))
-                except:
-                    pass
+                    os.remove(os.path.join(frames_dir_var, file))
+                except Exception as cleanup_error:
+                    logger.error(f"Error removing frame file: {cleanup_error}")
             try:
-                os.rmdir(frames_dir)
-            except:
-                pass
+                os.rmdir(frames_dir_var)
+            except Exception as cleanup_error:
+                logger.error(f"Error removing frames directory: {cleanup_error}")
         raise

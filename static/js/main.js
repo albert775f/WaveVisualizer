@@ -14,103 +14,177 @@ document.addEventListener('DOMContentLoaded', function() {
     // Session identifier
     let sessionId = null;
     
+    // Helper function for API calls with retry
+    const fetchWithRetry = (url, options, retries = 3, backoff = 300) => {
+        return new Promise((resolve, reject) => {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => {
+                controller.abort();
+            }, 30000); // 30 second timeout
+            
+            const makeRequest = (attemptsLeft) => {
+                fetch(url, {...options, signal: controller.signal})
+                    .then(response => {
+                        clearTimeout(timeout);
+                        resolve(response);
+                    })
+                    .catch(error => {
+                        console.log(`Fetch attempt failed: ${error.message}`);
+                        
+                        if (attemptsLeft > 0) {
+                            setTimeout(() => {
+                                console.log(`Retrying... ${attemptsLeft} attempts left`);
+                                makeRequest(attemptsLeft - 1);
+                            }, backoff);
+                        } else {
+                            clearTimeout(timeout);
+                            reject(error);
+                        }
+                    });
+            };
+            
+            makeRequest(retries);
+        });
+    };
+    
+    // Multi-step upload process
+    const uploadFiles = async () => {
+        try {
+            // Validate files
+            const audioFile = document.getElementById('audio-file').files[0];
+            const imageFile = document.getElementById('image-file').files[0];
+            const visualizationColor = document.getElementById('visualization-color').value;
+            
+            if (!audioFile) {
+                showError('Please select an audio file');
+                return;
+            }
+            
+            if (!imageFile) {
+                showError('Please select a background image');
+                return;
+            }
+            
+            // Show processing UI and reset previous errors
+            uploadContainer.classList.add('d-none');
+            processingContainer.classList.remove('d-none');
+            progressBar.style.width = '0%';
+            errorContainer.classList.add('d-none');
+            
+            // Step 1: Get session ID
+            updateProgress('Preparing upload...', 5);
+            const prepareResponse = await fetchWithRetry('/prepare_upload', { method: 'POST' });
+            
+            if (!prepareResponse.ok) {
+                throw new Error('Failed to prepare upload');
+            }
+            
+            const prepareData = await prepareResponse.json();
+            if (prepareData.error) {
+                throw new Error(prepareData.error);
+            }
+            
+            sessionId = prepareData.session_id;
+            console.log(`Session created: ${sessionId}`);
+            
+            // Step 2: Upload audio file
+            updateProgress('Uploading audio file...', 20);
+            const audioFormData = new FormData();
+            audioFormData.append('audio_file', audioFile);
+            
+            const audioResponse = await fetchWithRetry(`/upload_audio/${sessionId}`, {
+                method: 'POST',
+                body: audioFormData
+            });
+            
+            if (!audioResponse.ok) {
+                throw new Error('Failed to upload audio file');
+            }
+            
+            const audioData = await audioResponse.json();
+            if (audioData.error) {
+                throw new Error(audioData.error);
+            }
+            
+            console.log('Audio uploaded successfully');
+            
+            // Step 3: Upload image file
+            updateProgress('Uploading background image...', 40);
+            const imageFormData = new FormData();
+            imageFormData.append('image_file', imageFile);
+            
+            const imageResponse = await fetchWithRetry(`/upload_image/${sessionId}`, {
+                method: 'POST',
+                body: imageFormData
+            });
+            
+            if (!imageResponse.ok) {
+                throw new Error('Failed to upload image file');
+            }
+            
+            const imageData = await imageResponse.json();
+            if (imageData.error) {
+                throw new Error(imageData.error);
+            }
+            
+            console.log('Image uploaded successfully');
+            
+            // Step 4: Process files
+            updateProgress('Processing visualization...', 60);
+            const processFormData = new FormData();
+            processFormData.append('visualization_color', visualizationColor);
+            
+            const processResponse = await fetchWithRetry(`/process/${sessionId}`, {
+                method: 'POST',
+                body: processFormData
+            });
+            
+            if (!processResponse.ok) {
+                throw new Error('Failed to process files');
+            }
+            
+            const processData = await processResponse.json();
+            if (processData.error) {
+                throw new Error(processData.error);
+            }
+            
+            console.log('Processing completed successfully');
+            
+            // Update UI with success
+            progressBar.style.width = '100%';
+            processingContainer.classList.add('d-none');
+            successContainer.classList.remove('d-none');
+            
+            // Set download link
+            downloadLink.href = `/download/${processData.output_file}`;
+            
+        } catch (error) {
+            console.error('Error:', error);
+            showError(error.message || 'An unexpected error occurred. Please try again.');
+        }
+    };
+    
+    // Helper function to update progress
+    const updateProgress = (message, percent) => {
+        document.querySelector('#processing-container h4').textContent = message;
+        progressBar.style.width = `${percent}%`;
+    };
+    
     // Form submission handler
     uploadForm.addEventListener('submit', function(e) {
         e.preventDefault();
         
-        // Validate files before submission
-        const audioFile = document.getElementById('audio-file').files[0];
-        const imageFile = document.getElementById('image-file').files[0];
+        // Disable the button to prevent multiple submissions
+        const submitButton = document.getElementById('generate-btn');
+        submitButton.disabled = true;
+        submitButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
         
-        if (!audioFile) {
-            showError('Please select an audio file');
-            return;
-        }
-        
-        if (!imageFile) {
-            showError('Please select a background image');
-            return;
-        }
-        
-        // Show processing UI
-        uploadContainer.classList.add('d-none');
-        processingContainer.classList.remove('d-none');
-        progressBar.style.width = '0%';
-        
-        // Reset any previous errors
-        errorContainer.classList.add('d-none');
-        
-        // Get form data
-        const formData = new FormData(uploadForm);
-        
-        // Add timeout and retry logic for better reliability
-        const fetchWithRetry = (url, options, retries = 3, backoff = 300) => {
-            return new Promise((resolve, reject) => {
-                const controller = new AbortController();
-                const timeout = setTimeout(() => {
-                    controller.abort();
-                }, 60000); // 60 second timeout
-                
-                const makeRequest = (attemptsLeft) => {
-                    fetch(url, {...options, signal: controller.signal})
-                        .then(response => {
-                            clearTimeout(timeout);
-                            resolve(response);
-                        })
-                        .catch(error => {
-                            console.log(`Fetch attempt failed: ${error.message}`);
-                            
-                            if (attemptsLeft > 0) {
-                                setTimeout(() => {
-                                    console.log(`Retrying... ${attemptsLeft} attempts left`);
-                                    makeRequest(attemptsLeft - 1);
-                                }, backoff);
-                            } else {
-                                clearTimeout(timeout);
-                                reject(error);
-                            }
-                        });
-                };
-                
-                makeRequest(retries);
-            });
-        };
-        
-        // Send AJAX request with retry mechanism
-        fetchWithRetry('/upload', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`Server responded with status: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data.error) {
-                // Show error
-                showError(data.error);
-            } else {
-                // Extract session ID from filename for progress checking
-                const outputFile = data.output_file;
-                sessionId = outputFile.split('_')[0];
-                
-                // Show success UI
-                processingContainer.classList.add('d-none');
-                successContainer.classList.remove('d-none');
-                
-                // Set download link
-                downloadLink.href = `/download/${outputFile}`;
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showError('Network error or upload timeout. Please try again with smaller files or check your connection.');
+        // Start the upload process
+        uploadFiles().finally(() => {
+            // Re-enable the button when done
+            submitButton.disabled = false;
+            submitButton.innerHTML = '<i class="fas fa-wand-magic-sparkles me-2"></i>Generate Video';
         });
-        
-        // Start progress checking animation
-        startProgressSimulation();
     });
     
     // Create new button handler
