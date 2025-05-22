@@ -81,7 +81,7 @@ def process_video_task(task_id, audio_path, image_path, output_path, preset, app
             output_filename = os.path.basename(output_path)
             display_name = f"{task.audio_file.display_name}_{task.image_file.display_name}.mp4"
             
-            # Create output video entry
+            # Create output video entry with fresh database session
             output_video = OutputVideo()
             output_video.filename = output_filename
             output_video.display_name = display_name

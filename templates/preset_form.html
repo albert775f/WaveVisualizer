@@ -1,59 +1,27 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ 'Create New Preset' if is_new else 'Edit Preset' }} - Audio Visualizer</title>
-    <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <style>
-        .form-range::-webkit-slider-thumb {
-            background: var(--bs-info);
-        }
-        .form-range::-moz-range-thumb {
-            background: var(--bs-info);
-        }
-        .color-preview {
-            width: 30px;
-            height: 30px;
-            display: inline-block;
-            border-radius: 5px;
-            margin-right: 10px;
-            vertical-align: middle;
-        }
-    </style>
-</head>
-<body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-        <div class="container">
-            <a class="navbar-brand" href="{{ url_for('index') }}">Audio Visualizer</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav">
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('index') }}">Home</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('library') }}">Media Library</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" href="{{ url_for('presets') }}">Visualization Presets</a>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
+{% extends "base.html" %}
 
-    <div class="container mt-4">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }}">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
+{% block title %}{{ 'Create New Preset' if is_new else 'Edit Preset' }} - Audio Visualizer{% endblock %}
+
+{% block head_extra %}
+<style>
+    .form-range::-webkit-slider-thumb {
+        background: var(--bs-info);
+    }
+    .form-range::-moz-range-thumb {
+        background: var(--bs-info);
+    }
+    .color-preview {
+        width: 30px;
+        height: 30px;
+        display: inline-block;
+        border-radius: 5px;
+        margin-right: 10px;
+        vertical-align: middle;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
 
         <div class="row">
             <div class="col-md-10 mx-auto">
@@ -151,27 +119,28 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        function updateColorPreview(color) {
-            document.getElementById('colorPreview').style.backgroundColor = color;
-            document.getElementById('colorText').value = color;
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function updateColorPreview(color) {
+        document.getElementById('colorPreview').style.backgroundColor = color;
+        document.getElementById('colorText').value = color;
+    }
+    
+    function updateColorInput(text) {
+        const colorInput = document.getElementById('color');
+        colorInput.value = text;
+        document.getElementById('colorPreview').style.backgroundColor = text;
+    }
+    
+    function toggleGlowSettings(enabled) {
+        const glowSettings = document.getElementById('glowSettings');
+        if (enabled) {
+            glowSettings.classList.remove('d-none');
+        } else {
+            glowSettings.classList.add('d-none');
         }
-        
-        function updateColorInput(text) {
-            const colorInput = document.getElementById('color');
-            colorInput.value = text;
-            document.getElementById('colorPreview').style.backgroundColor = text;
-        }
-        
-        function toggleGlowSettings(enabled) {
-            const glowSettings = document.getElementById('glowSettings');
-            if (enabled) {
-                glowSettings.classList.remove('d-none');
-            } else {
-                glowSettings.classList.add('d-none');
-            }
-        }
-    </script>
-</body>
-</html>
+    }
+</script>
+{% endblock %}
