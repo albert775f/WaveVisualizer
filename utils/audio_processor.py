@@ -119,16 +119,17 @@ def process_audio_visualization(
             normalized_amps = (avg_amplitudes - np.min(avg_amplitudes)) / (np.max(avg_amplitudes) - np.min(avg_amplitudes))
             
             # Apply smoothing between frames if needed
-            prev_heights = getattr(process_audio_visualization, 'prev_heights', None)
-            if i > 0 and smoothing > 0 and prev_heights is not None:
+            prev_heights_var = getattr(process_audio_visualization, '_prev_heights', None)
+            if i > 0 and smoothing > 0 and prev_heights_var is not None:
                 try:
                     # Apply smoothing between frames
-                    normalized_amps = prev_heights * smoothing + normalized_amps * (1 - smoothing)
+                    normalized_amps = prev_heights_var * smoothing + normalized_amps * (1 - smoothing)
                 except Exception as e:
                     logger.warning(f"Smoothing error: {e}")
             
-            # Store current heights for next frame
-            process_audio_visualization.prev_heights = normalized_amps.copy()
+            # Store current heights for next frame as an attribute of the function
+            # This is a bit of a hack but lets us avoid global variables
+            process_audio_visualization._prev_heights = normalized_amps.copy()
             
             # Calculate bar positions and heights using custom parameters
             n_bars = bar_count  # Number of bars to display

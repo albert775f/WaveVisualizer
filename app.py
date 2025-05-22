@@ -73,7 +73,11 @@ def index():
         db.session.commit()
         presets = [default_preset]
     
-    return render_template('index.html', presets=presets)
+    # Get audio and image files for dropdowns
+    audio_files = AudioFile.query.all()
+    image_files = ImageFile.query.all()
+    
+    return render_template('index.html', presets=presets, audio_files=audio_files, image_files=image_files)
 
 @app.route('/library')
 def library():
@@ -101,19 +105,18 @@ def new_preset():
         name = request.form.get('name', 'New Preset')
         
         # Create new preset with form data
-        preset = Preset(
-            name=name,
-            color=request.form.get('color', '#00FFFF'),
-            bar_count=int(request.form.get('bar_count', 64)),
-            bar_width_ratio=float(request.form.get('bar_width_ratio', 0.8)),
-            bar_height_scale=float(request.form.get('bar_height_scale', 1.0)),
-            glow_effect=bool(request.form.get('glow_effect', False)),
-            glow_intensity=float(request.form.get('glow_intensity', 0.5)),
-            responsiveness=float(request.form.get('responsiveness', 1.0)),
-            smoothing=float(request.form.get('smoothing', 0.2)),
-            vertical_position=float(request.form.get('vertical_position', 0.5)),
-            horizontal_margin=float(request.form.get('horizontal_margin', 0.1))
-        )
+        preset = Preset()
+        preset.name = name
+        preset.color = request.form.get('color', '#00FFFF')
+        preset.bar_count = int(request.form.get('bar_count', 64))
+        preset.bar_width_ratio = float(request.form.get('bar_width_ratio', 0.8))
+        preset.bar_height_scale = float(request.form.get('bar_height_scale', 1.0))
+        preset.glow_effect = 'glow_effect' in request.form
+        preset.glow_intensity = float(request.form.get('glow_intensity', 0.5))
+        preset.responsiveness = float(request.form.get('responsiveness', 1.0))
+        preset.smoothing = float(request.form.get('smoothing', 0.2))
+        preset.vertical_position = float(request.form.get('vertical_position', 0.5))
+        preset.horizontal_margin = float(request.form.get('horizontal_margin', 0.1))
         
         db.session.add(preset)
         db.session.commit()
