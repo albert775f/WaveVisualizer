@@ -9,6 +9,11 @@ import subprocess
 import tempfile
 import logging
 import gc  # For garbage collection
+from types import SimpleNamespace
+from PIL import Image
+
+# Import our custom image processor
+from utils.image_processor import ensure_even_dimensions
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +52,12 @@ def process_audio_visualization(
         # Get audio duration and calculate number of frames needed
         duration = librosa.get_duration(y=y, sr=sr)
         n_frames = int(duration * fps)
+        
+        # Process image to ensure even dimensions (required for H.264 encoding)
+        logger.info("Processing background image...")
+        image_path, width, height = ensure_even_dimensions(image_path)
+        if width == 0 or height == 0:
+            raise ValueError("Failed to process background image dimensions")
         
         # Create a temporary directory for frames
         frames_dir = tempfile.mkdtemp()
