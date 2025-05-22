@@ -4,6 +4,18 @@ from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 
+def init_db(app):
+    """Initialize the database with the Flask app"""
+    db.init_app(app)
+    with app.app_context():
+        db.create_all()
+        
+        # Create default preset if none exists
+        if Preset.query.count() == 0:
+            default_preset = Preset(name="Default")
+            db.session.add(default_preset)
+            db.session.commit()
+
 class Preset(db.Model):
     """Visualization preset settings that users can save and reuse"""
     id = db.Column(db.Integer, primary_key=True)

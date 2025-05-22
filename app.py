@@ -10,9 +10,8 @@ from werkzeug.exceptions import RequestEntityTooLarge
 import librosa
 import shutil
 import time
-from flask_sqlalchemy import SQLAlchemy
 
-from models import db, Preset, AudioFile, ImageFile, OutputVideo
+from models import db, Preset, AudioFile, ImageFile, OutputVideo, init_db
 from utils.audio_processor import process_audio_visualization
 
 # Configure logging
@@ -34,8 +33,8 @@ app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key")
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///wavevisualizer.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Initialize database with app
-db.init_app(app)
+# Initialize database
+init_db(app)
 
 # Configure upload settings - use absolute paths for more reliability
 base_dir = os.path.abspath(os.path.dirname(__file__))
@@ -381,16 +380,6 @@ def internal_server_error(error):
     logger.error(f"Internal server error: {str(error)}")
     flash('An internal server error occurred. Please try again.', 'error')
     return redirect(url_for('index'))
-
-# Create database tables
-with app.app_context():
-    db.create_all()
-    
-    # Create default preset if none exists
-    if Preset.query.count() == 0:
-        default_preset = Preset(name="Default")
-        db.session.add(default_preset)
-        db.session.commit()
 
 if __name__ == '__main__':
     # Clean up old files before starting
