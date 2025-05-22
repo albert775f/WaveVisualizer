@@ -1,8 +1,8 @@
 import os
 import uuid
 import logging
-import base64
-import json
+import time
+import threading
 from flask import Flask, render_template, request, jsonify, send_from_directory, flash, redirect, url_for
 import tempfile
 import shutil
@@ -63,148 +63,87 @@ def index():
     return render_template('index.html')
 
 
-@app.route('/prepare_upload', methods=['POST'])
-def prepare_upload():
-    """First step - create session ID and get ready for file upload"""
+@app.route('/upload', methods=['POST'])
+def upload_files():
+    """Handle file upload and processing"""
     try:
-        # Create a new session ID
-        session_id = str(uuid.uuid4())
+        logger.info("Upload request received")
         
-        # Create session directory
-        session_dir = os.path.join(app.config['UPLOAD_FOLDER'], session_id)
-        os.makedirs(session_dir, exist_ok=True)
-        
-        logger.info(f"Created session: {session_id}")
-        
-        return jsonify({
-            'success': True,
-            'session_id': session_id
-        })
-    except Exception as e:
-        logger.error(f"Error preparing upload session: {str(e)}", exc_info=True)
-        return jsonify({'error': f'Error preparing upload: {str(e)}'}), 500
-
-
-@app.route('/upload_audio/<session_id>', methods=['POST'])
-def upload_audio(session_id):
-    """Second step - upload audio file"""
-    try:
-        # Validate session_id
-        if not session_id or not os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], session_id)):
-            return jsonify({'error': 'Invalid session ID'}), 400
-            
         # Check if audio file was uploaded
         if 'audio_file' not in request.files:
-            return jsonify({'error': 'No audio file provided'}), 400
+            logger.warning("No audio file provided in request")
+            flash('No audio file provided', 'error')
+            return redirect(url_for('index'))
         
         audio_file = request.files['audio_file']
         if not audio_file.filename or audio_file.filename == '':
-            return jsonify({'error': 'No audio file selected'}), 400
+            logger.warning("Empty audio filename")
+            flash('No audio file selected', 'error')
+            return redirect(url_for('index'))
         
         if not allowed_audio_file(audio_file.filename or ''):
-            return jsonify({'error': 'Invalid audio file format. Please upload a WAV file.'}), 400
-            
-        # Save audio file
-        audio_file_name = audio_file.filename if audio_file.filename else ''
-        audio_filename = f"audio_{secure_filename(audio_file_name)}"
-        audio_path = os.path.join(app.config['UPLOAD_FOLDER'], session_id, audio_filename)
-        
-        logger.info(f"Saving audio file: {audio_path}")
-        audio_file.save(audio_path)
-        
-        if not os.path.exists(audio_path):
-            return jsonify({'error': 'Failed to save audio file'}), 500
-            
-        return jsonify({
-            'success': True,
-            'message': 'Audio file uploaded successfully'
-        })
-    except Exception as e:
-        logger.error(f"Error uploading audio: {str(e)}", exc_info=True)
-        return jsonify({'error': f'Error uploading audio: {str(e)}'}), 500
+            logger.warning(f"Invalid audio format: {audio_file.filename}")
+            flash('Invalid audio file format. Please upload a WAV file.', 'error')
+            return redirect(url_for('index'))
 
-
-@app.route('/upload_image/<session_id>', methods=['POST'])
-def upload_image(session_id):
-    """Third step - upload image file"""
-    try:
-        # Validate session_id
-        if not session_id or not os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], session_id)):
-            return jsonify({'error': 'Invalid session ID'}), 400
-            
         # Check if image file was uploaded
         if 'image_file' not in request.files:
-            return jsonify({'error': 'No image file provided'}), 400
+            logger.warning("No image file provided in request")
+            flash('No background image provided', 'error')
+            return redirect(url_for('index'))
         
         image_file = request.files['image_file']
         if not image_file.filename or image_file.filename == '':
-            return jsonify({'error': 'No image file selected'}), 400
+            logger.warning("Empty image filename")
+            flash('No background image selected', 'error')
+            return redirect(url_for('index'))
         
         if not allowed_image_file(image_file.filename or ''):
-            return jsonify({'error': 'Invalid image format. Please upload a JPG or PNG file.'}), 400
-            
-        # Save image file
-        image_file_name = image_file.filename if image_file.filename else ''
-        image_filename = f"image_{secure_filename(image_file_name)}"
-        image_path = os.path.join(app.config['UPLOAD_FOLDER'], session_id, image_filename)
+            logger.warning(f"Invalid image format: {image_file.filename}")
+            flash('Invalid image file format. Please upload a JPG or PNG file.', 'error')
+            return redirect(url_for('index'))
+
+        # Generate unique filenames
+        session_id = str(uuid.uuid4())
         
-        logger.info(f"Saving image file: {image_path}")
+        # Make sure filenames are not None before secure_filename
+        audio_file_name = audio_file.filename if audio_file.filename else ''
+        image_file_name = image_file.filename if image_file.filename else ''
+        
+        audio_filename = f"{session_id}_{secure_filename(audio_file_name)}"
+        image_filename = f"{session_id}_{secure_filename(image_file_name)}"
+        
+        audio_path = os.path.join(app.config['UPLOAD_FOLDER'], audio_filename)
+        image_path = os.path.join(app.config['UPLOAD_FOLDER'], image_filename)
+        
+        logger.debug(f"Saving audio to {audio_path}")
+        logger.debug(f"Saving image to {image_path}")
+        
+        # Save uploaded files
+        audio_file.save(audio_path)
         image_file.save(image_path)
         
+        if not os.path.exists(audio_path):
+            logger.error(f"Failed to save audio file to {audio_path}")
+            flash('Failed to save audio file', 'error')
+            return redirect(url_for('index'))
+            
         if not os.path.exists(image_path):
-            return jsonify({'error': 'Failed to save image file'}), 500
-            
-        return jsonify({
-            'success': True,
-            'message': 'Image file uploaded successfully'
-        })
-    except Exception as e:
-        logger.error(f"Error uploading image: {str(e)}", exc_info=True)
-        return jsonify({'error': f'Error uploading image: {str(e)}'}), 500
-
-
-@app.route('/process/<session_id>', methods=['POST'])
-def process_files(session_id):
-    """Final step - process the files"""
-    try:
-        # Validate session_id
-        session_dir = os.path.join(app.config['UPLOAD_FOLDER'], session_id)
-        if not session_id or not os.path.exists(session_dir):
-            return jsonify({'error': 'Invalid session ID'}), 400
-            
-        # Find files in the session directory
-        files = os.listdir(session_dir)
+            logger.error(f"Failed to save image file to {image_path}")
+            flash('Failed to save image file', 'error')
+            return redirect(url_for('index'))
         
-        audio_file = None
-        image_file = None
-        
-        for file in files:
-            if file.startswith('audio_'):
-                audio_file = file
-            elif file.startswith('image_'):
-                image_file = file
-        
-        if not audio_file:
-            return jsonify({'error': 'Audio file not found. Please upload again.'}), 400
-            
-        if not image_file:
-            return jsonify({'error': 'Image file not found. Please upload again.'}), 400
-            
-        # Get full paths
-        audio_path = os.path.join(session_dir, audio_file)
-        image_path = os.path.join(session_dir, image_file)
-        
-        # Get visualization color
+        # Get visualization color from form
         visualization_color = request.form.get('visualization_color', '#00FFFF')  # Default to cyan
         logger.info(f"Using visualization color: {visualization_color}")
         
-        # Prepare output path
+        # Process the audio and image to create visualization
         output_filename = f"{session_id}_output.mp4"
         output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
         
         logger.info("Starting audio visualization processing")
         
-        # Process the visualization
+        # Process audio visualization
         process_audio_visualization(
             audio_path=audio_path,
             image_path=image_path,
@@ -213,14 +152,14 @@ def process_files(session_id):
         )
         
         logger.info(f"Video generated successfully: {output_filename}")
-        return jsonify({
-            'success': True,
-            'message': 'Video generated successfully!',
-            'output_file': output_filename
-        })
+        
+        # Redirect to a success page
+        return render_template('success.html', filename=output_filename)
+        
     except Exception as e:
-        logger.error(f"Error during processing: {str(e)}", exc_info=True)
-        return jsonify({'error': f'Error processing files: {str(e)}'}), 500
+        logger.error(f"Error during upload/processing: {str(e)}", exc_info=True)
+        flash(f'Error processing files: {str(e)}', 'error')
+        return redirect(url_for('index'))
 
 
 @app.route('/download/<filename>')
