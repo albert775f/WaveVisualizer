@@ -1,7 +1,9 @@
 import os
 import uuid
 import logging
-from flask import Flask, render_template, request, send_from_directory, flash, redirect, url_for
+import datetime
+import json
+from flask import Flask, render_template, request, send_from_directory, flash, redirect, url_for, jsonify
 from werkzeug.utils import secure_filename
 from utils.audio_processor import process_audio_visualization
 
@@ -16,19 +18,36 @@ app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key")
 # Configure upload settings - use absolute paths for more reliability
 base_dir = os.path.abspath(os.path.dirname(__file__))
 UPLOAD_FOLDER = os.path.join(base_dir, 'uploads')
+AUDIO_FOLDER = os.path.join(UPLOAD_FOLDER, 'audio')
+IMAGE_FOLDER = os.path.join(UPLOAD_FOLDER, 'images')
 OUTPUT_FOLDER = os.path.join(base_dir, 'output')
+METADATA_FILE = os.path.join(base_dir, 'metadata.json')
+
 ALLOWED_AUDIO_EXTENSIONS = {'wav'}
 ALLOWED_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png'}
-MAX_CONTENT_LENGTH = 25 * 1024 * 1024  # 25 MB max upload size
+MAX_AUDIO_SIZE = 10 * 1024 * 1024  # 10 MB max audio file size
+MAX_IMAGE_SIZE = 5 * 1024 * 1024   # 5 MB max image file size
 
 # Create necessary directories
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(AUDIO_FOLDER, exist_ok=True)
+os.makedirs(IMAGE_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 # Configure Flask
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['AUDIO_FOLDER'] = AUDIO_FOLDER
+app.config['IMAGE_FOLDER'] = IMAGE_FOLDER
 app.config['OUTPUT_FOLDER'] = OUTPUT_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
+app.config['MAX_CONTENT_LENGTH'] = MAX_AUDIO_SIZE  # Set to the largest allowed file
+
+# Initialize metadata file if it doesn't exist
+if not os.path.exists(METADATA_FILE):
+    with open(METADATA_FILE, 'w') as f:
+        json.dump({
+            'audio_files': [],
+            'image_files': [],
+            'output_files': []
+        }, f)
 
 
 def allowed_audio_file(filename):

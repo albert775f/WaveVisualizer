@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Media Library - Audio Spectrum Video Generator</title>
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container py-4">
+        <div class="row justify-content-center">
+            <div class="col-md-10">
+                <div class="card shadow mb-4">
+                    <div class="card-header bg-primary bg-gradient text-white">
+                        <h1 class="text-center mb-0">Media Library</h1>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-center mb-4">
+                            Upload audio files and background images to use for creating your custom visualizations.
+                        </p>
+                        
+                        <!-- Tabs -->
+                        <ul class="nav nav-tabs mb-4" id="libraryTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="audio-tab" data-bs-toggle="tab" data-bs-target="#audio-content" type="button" role="tab" aria-controls="audio-content" aria-selected="true">
+                                    <i class="fas fa-music me-2"></i>Audio Files
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="images-tab" data-bs-toggle="tab" data-bs-target="#images-content" type="button" role="tab" aria-controls="images-content" aria-selected="false">
+                                    <i class="fas fa-image me-2"></i>Background Images
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="create-tab" data-bs-toggle="tab" data-bs-target="#create-content" type="button" role="tab" aria-controls="create-content" aria-selected="false">
+                                    <i class="fas fa-wand-magic-sparkles me-2"></i>Create Video
+                                </button>
+                            </li>
+                        </ul>
+                        
+                        <!-- Flash messages -->
+                        {% with messages = get_flashed_messages(with_categories=true) %}
+                            {% if messages %}
+                                {% for category, message in messages %}
+                                    <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show" role="alert">
+                                        {{ message }}
+                                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                    </div>
+                                {% endfor %}
+                            {% endif %}
+                        {% endwith %}
+                        
+                        <!-- Tab content -->
+                        <div class="tab-content" id="libraryTabsContent">
+                            
+                            <!-- Audio Tab -->
+                            <div class="tab-pane fade show active" id="audio-content" role="tabpanel" aria-labelledby="audio-tab">
+                                <div class="row">
+                                    <div class="col-md-5">
+                                        <div class="card mb-3">
+                                            <div class="card-header bg-secondary">
+                                                <h5 class="mb-0"><i class="fas fa-upload me-2"></i>Upload Audio</h5>
+                                            </div>
+                                            <div class="card-body">
+                                                <form action="{{ url_for('upload_audio') }}" method="POST" enctype="multipart/form-data">
+                                                    <div class="mb-3">
+                                                        <label for="audio-file" class="form-label">Audio File (WAV)</label>
+                                                        <input type="file" class="form-control" id="audio-file" name="audio_file" accept=".wav" required>
+                                                        <div class="form-text">Select a WAV audio file (max 10MB).</div>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label for="audio-name" class="form-label">Display Name (Optional)</label>
+                                                        <input type="text" class="form-control" id="audio-name" name="audio_name" placeholder="My Audio Track">
+                                                        <div class="form-text">Give your audio file a recognizable name.</div>
+                                                    </div>
+                                                    <div class="d-grid">
+                                                        <button type="submit" class="btn btn-primary">
+                                                            <i class="fas fa-upload me-2"></i>Upload Audio
+                                                        </button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-7">
+                                        <div class="card">
+                                            <div class="card-header bg-secondary">
+                                                <h5 class="mb-0"><i class="fas fa-list me-2"></i>Your Audio Files</h5>
+                                            </div>
+                                            <div class="card-body">
+                                                {% if audio_files %}
+                                                    <div class="table-responsive">
+                                                        <table class="table table-hover">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>Name</th>
+                                                                    <th>Size</th>
+                                                                    <th>Actions</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {% for audio in audio_files %}
+                                                                <tr>
+                                                                    <td>{{ audio.display_name }}</td>
+                                                                    <td>{{ audio.size }}</td>
+                                                                    <td>
+                                                                        <div class="btn-group btn-group-sm" role="group">
+                                                                            <a href="{{ url_for('delete_audio', filename=audio.filename) }}" class="btn btn-outline-danger" onclick="return confirm('Are you sure you want to delete this file?')">
+                                                                                <i class="fas fa-trash"></i>
+                                                                            </a>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                                {% endfor %}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                {% else %}
+                                                    <div class="alert alert-info">
+                                                        <i class="fas fa-info-circle me-2"></i>No audio files uploaded yet.
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Images Tab -->
+                            <div class="tab-pane fade" id="images-content" role="tabpanel" aria-labelledby="images-tab">
+                                <div class="row">
+                                    <div class="col-md-5">
+                                        <div class="card mb-3">
+                                            <div class="card-header bg-secondary">
+                                                <h5 class="mb-0"><i class="fas fa-upload me-2"></i>Upload Image</h5>
+                                            </div>
+                                            <div class="card-body">
+                                                <form action="{{ url_for('upload_image') }}" method="POST" enctype="multipart/form-data">
+                                                    <div class="mb-3">
+                                                        <label for="image-file" class="form-label">Background Image</label>
+                                                        <input type="file" class="form-control" id="image-file" name="image_file" accept=".jpg,.jpeg,.png" required>
+                                                        <div class="form-text">Select a JPG or PNG image (max 5MB).</div>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label for="image-name" class="form-label">Display Name (Optional)</label>
+                                                        <input type="text" class="form-control" id="image-name" name="image_name" placeholder="My Background">
+                                                        <div class="form-text">Give your image a recognizable name.</div>
+                                                    </div>
+                                                    <div class="d-grid">
+                                                        <button type="submit" class="btn btn-primary">
+                                                            <i class="fas fa-upload me-2"></i>Upload Image
+                                                        </button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-7">
+                                        <div class="card">
+                                            <div class="card-header bg-secondary">
+                                                <h5 class="mb-0"><i class="fas fa-images me-2"></i>Your Background Images</h5>
+                                            </div>
+                                            <div class="card-body">
+                                                {% if image_files %}
+                                                    <div class="row row-cols-1 row-cols-md-2 g-3">
+                                                        {% for image in image_files %}
+                                                        <div class="col">
+                                                            <div class="card h-100">
+                                                                <img src="{{ url_for('get_image', filename=image.filename) }}" class="card-img-top" alt="{{ image.display_name }}">
+                                                                <div class="card-body">
+                                                                    <h6 class="card-title">{{ image.display_name }}</h6>
+                                                                    <p class="card-text small">{{ image.size }}</p>
+                                                                    <a href="{{ url_for('delete_image', filename=image.filename) }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('Are you sure you want to delete this image?')">
+                                                                        <i class="fas fa-trash me-1"></i>Delete
+                                                                    </a>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        {% endfor %}
+                                                    </div>
+                                                {% else %}
+                                                    <div class="alert alert-info">
+                                                        <i class="fas fa-info-circle me-2"></i>No background images uploaded yet.
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Create Video Tab -->
+                            <div class="tab-pane fade" id="create-content" role="tabpanel" aria-labelledby="create-tab">
+                                <div class="card">
+                                    <div class="card-header bg-secondary">
+                                        <h5 class="mb-0"><i class="fas fa-film me-2"></i>Create Audio Visualization</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        {% if audio_files and image_files %}
+                                            <form action="{{ url_for('create_video') }}" method="POST">
+                                                <div class="row">
+                                                    <div class="col-md-6 mb-3">
+                                                        <label for="select-audio" class="form-label">Select Audio File</label>
+                                                        <select class="form-select" id="select-audio" name="audio_filename" required>
+                                                            <option value="" disabled selected>Choose audio file...</option>
+                                                            {% for audio in audio_files %}
+                                                            <option value="{{ audio.filename }}">{{ audio.display_name }}</option>
+                                                            {% endfor %}
+                                                        </select>
+                                                    </div>
+                                                    
+                                                    <div class="col-md-6 mb-3">
+                                                        <label for="select-image" class="form-label">Select Background Image</label>
+                                                        <select class="form-select" id="select-image" name="image_filename" required>
+                                                            <option value="" disabled selected>Choose background image...</option>
+                                                            {% for image in image_files %}
+                                                            <option value="{{ image.filename }}">{{ image.display_name }}</option>
+                                                            {% endfor %}
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="row">
+                                                    <div class="col-md-6 mb-3">
+                                                        <label for="visualization-color" class="form-label">Visualization Color</label>
+                                                        <input type="color" class="form-control form-control-color w-100" id="visualization-color" name="visualization_color" value="#00FFFF">
+                                                        <div class="form-text">Choose a color for the audio spectrum visualization.</div>
+                                                    </div>
+                                                    
+                                                    <div class="col-md-6 mb-3">
+                                                        <label for="output-name" class="form-label">Output Video Name (Optional)</label>
+                                                        <input type="text" class="form-control" id="output-name" name="output_name" placeholder="My Visualization">
+                                                        <div class="form-text">Give your output video a recognizable name.</div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="d-grid">
+                                                    <button type="submit" class="btn btn-success">
+                                                        <i class="fas fa-wand-magic-sparkles me-2"></i>Generate Video
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        {% else %}
+                                            <div class="alert alert-warning">
+                                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                                {% if not audio_files %}
+                                                    You need to upload at least one audio file.
+                                                {% elif not image_files %}
+                                                    You need to upload at least one background image.
+                                                {% else %}
+                                                    You need to upload at least one audio file and one background image.
+                                                {% endif %}
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                
+                                <!-- Recent Videos -->
+                                {% if output_files %}
+                                <div class="card mt-3">
+                                    <div class="card-header bg-secondary">
+                                        <h5 class="mb-0"><i class="fas fa-film me-2"></i>Your Generated Videos</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-hover">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Name</th>
+                                                        <th>Created</th>
+                                                        <th>Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for video in output_files %}
+                                                    <tr>
+                                                        <td>{{ video.display_name }}</td>
+                                                        <td>{{ video.created_at }}</td>
+                                                        <td>
+                                                            <div class="btn-group btn-group-sm" role="group">
+                                                                <a href="{{ url_for('download_file', filename=video.filename) }}" class="btn btn-outline-primary">
+                                                                    <i class="fas fa-download me-1"></i>Download
+                                                                </a>
+                                                                <a href="{{ url_for('delete_video', filename=video.filename) }}" class="btn btn-outline-danger" onclick="return confirm('Are you sure you want to delete this video?')">
+                                                                    <i class="fas fa-trash"></i>
+                                                                </a>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer text-muted">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <i class="fas fa-info-circle me-1"></i> Upload files separately, then combine them
+                            </div>
+                            <div class="col-md-6 text-md-end">
+                                <i class="fas fa-code me-1"></i> Audio Spectrum Video Generator
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
