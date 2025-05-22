@@ -10,6 +10,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 import librosa
 import shutil
 import time
+from flask_sqlalchemy import SQLAlchemy
 
 from models import db, Preset, AudioFile, ImageFile, OutputVideo
 from utils.audio_processor import process_audio_visualization
@@ -28,6 +29,13 @@ logger = logging.getLogger(__name__)
 # Initialize Flask app
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key")
+
+# Configure database
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///wavevisualizer.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Initialize database with app
+db.init_app(app)
 
 # Configure upload settings - use absolute paths for more reliability
 base_dir = os.path.abspath(os.path.dirname(__file__))
