@@ -213,8 +213,8 @@
                     <div class="modal-body">
                         <div class="mb-3">
                             <label for="audioFile" class="form-label">Select WAV File</label>
-                            <input class="form-control" type="file" id="audioFile" name="audio" accept=".wav" required onchange="validateFileSize(this, 1024)">
-                            <div class="form-text">Only WAV files are supported. Maximum size: 1 GB</div>
+                            <input class="form-control" type="file" id="audioFile" name="audio" accept=".wav" required onchange="validateFileSize(this, 50)">
+                            <div class="form-text">Only WAV files are supported. Maximum size: 50 MB (Replit limitation)</div>
                         </div>
                     </div>
                     <div class="modal-footer">

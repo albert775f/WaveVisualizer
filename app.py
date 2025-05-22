@@ -22,7 +22,7 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db.init_app(app)
 
 # Configure upload settings
-app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024  # 1GB max upload size
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload size (Replit limitation)
 app.config['UPLOAD_FOLDER_AUDIO'] = os.path.join(os.getcwd(), 'uploads', 'audio')
 app.config['UPLOAD_FOLDER_IMAGES'] = os.path.join(os.getcwd(), 'uploads', 'images')
 app.config['OUTPUT_FOLDER'] = os.path.join(os.getcwd(), 'output')
