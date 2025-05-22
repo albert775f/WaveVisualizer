@@ -78,3 +78,44 @@ class OutputVideo(db.Model):
     audio_file = db.relationship('AudioFile', backref='videos')
     image_file = db.relationship('ImageFile', backref='videos')
     preset = db.relationship('Preset', backref='videos')
+
+
+class BackgroundTask(db.Model):
+    """Background tasks for video generation"""
+    id = db.Column(db.Integer, primary_key=True)
+    task_id = db.Column(db.String(36), nullable=False, unique=True)  # UUID
+    task_type = db.Column(db.String(50), nullable=False, default='video_generation')
+    status = db.Column(db.String(20), nullable=False, default='pending')  # pending, processing, completed, failed
+    progress = db.Column(db.Integer, default=0)  # 0-100
+    estimated_time = db.Column(db.Integer, default=0)  # In seconds
+    error_message = db.Column(db.Text, nullable=True)
+    
+    # Parameters
+    audio_file_id = db.Column(db.Integer, db.ForeignKey('audio_file.id'))
+    image_file_id = db.Column(db.Integer, db.ForeignKey('image_file.id'))
+    preset_id = db.Column(db.Integer, db.ForeignKey('preset.id'))
+    output_filename = db.Column(db.String(255), nullable=True)  # Set when completed
+    
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    
+    # Relationships
+    audio_file = db.relationship('AudioFile', backref='tasks')
+    image_file = db.relationship('ImageFile', backref='tasks')
+    preset = db.relationship('Preset', backref='tasks')
+    
+    def to_dict(self):
+        """Convert task to dictionary for JSON response"""
+        return {
+            'id': self.id,
+            'task_id': self.task_id,
+            'status': self.status,
+            'progress': self.progress,
+            'estimated_time': self.estimated_time,
+            'error_message': self.error_message,
+            'audio_file': self.audio_file.display_name if self.audio_file else None,
+            'image_file': self.image_file.display_name if self.image_file else None,
+            'preset': self.preset.name if self.preset else None,
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'updated_at': self.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+        }

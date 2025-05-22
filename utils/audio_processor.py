@@ -26,7 +26,8 @@ def process_audio_visualization(
     responsiveness=1.0,
     smoothing=0.2,
     vertical_position=0.5,
-    horizontal_margin=0.1
+    horizontal_margin=0.1,
+    progress_callback=None
 ):
     """
     Process audio file to generate visualization frames, overlay on image, and create video
@@ -64,6 +65,11 @@ def process_audio_visualization(
                 break
                 
             segment = y[start_idx:end_idx]
+            
+            # Report progress if callback provided
+            if progress_callback and i % max(1, n_frames // 20) == 0:  # Update progress ~20 times
+                progress_percent = min(int(i / n_frames * 70) + 5, 75)  # 5-75% is frame generation
+                progress_callback(progress_percent)
             
             # Calculate spectrum using Short-time Fourier transform (STFT)
             D = np.abs(librosa.stft(segment, n_fft=2048, hop_length=512))
@@ -258,6 +264,10 @@ def process_audio_visualization(
                                     resized = frame.resize((new_width, new_height))
                                     resized.save(frame_path)
             
+            # Update progress callback before running FFmpeg
+            if progress_callback:
+                progress_callback(80)  # 80% complete - starting FFmpeg
+                
             # Run FFmpeg with detailed output for debugging
             process = subprocess.run(
                 ffmpeg_cmd, 
@@ -266,6 +276,10 @@ def process_audio_visualization(
                 stderr=subprocess.PIPE,
                 text=True
             )
+            
+            # Update progress callback after FFmpeg completes
+            if progress_callback:
+                progress_callback(95)  # 95% complete - FFmpeg finished
             
             if not os.path.exists(output_path):
                 logger.error("FFmpeg completed but output file was not created")
