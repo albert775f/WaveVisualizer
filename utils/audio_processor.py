@@ -77,20 +77,19 @@ def process_audio_visualization(
             # Convert to decibels
             D_db = librosa.amplitude_to_db(D, ref=np.max)
             
-            # Plot the spectrum
-            plt.figure(figsize=(10, 4))
-            plt.imshow(plt.imread(image_path))
-            
             # Get image dimensions to size the spectrum visualization
-            img = plt.imread(image_path)
-            img_height, img_width = img.shape[0], img.shape[1]
-            
-            # Make sure width and height are even (required for H.264 encoding)
-            # We need to resize the actual image, not just the figure
             from PIL import Image
             
-            # Load image with PIL to resize if needed
+            # Load image with PIL to handle resizing
             pil_img = Image.open(image_path)
+            img_width, img_height = pil_img.size
+            
+            # Plot the spectrum
+            plt.figure(figsize=(10, 4))
+            plt.imshow(np.array(pil_img))
+            
+            # Make sure width and height are even (required for H.264 encoding)
+            # Adjust dimensions if needed
             adjusted_width = img_width if img_width % 2 == 0 else img_width - 1
             adjusted_height = img_height if img_height % 2 == 0 else img_height - 1
             
@@ -110,7 +109,7 @@ def process_audio_visualization(
             fig, ax = plt.subplots(figsize=(adjusted_width/100, adjusted_height/100), dpi=100)
             
             # Plot the background image with correct orientation (not upside down)
-            ax.imshow(img, origin='upper')
+            ax.imshow(np.array(pil_img), origin='upper')
             
             # Calculate frequency bins to show (focus on audible range)
             # Use the bar_count parameter for the number of frequency bins
