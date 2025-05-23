@@ -1,0 +1,13 @@
+[Unit]
+Description=Wave Visualizer Web Application
+After=network.target
+
+[Service]
+User=YOUR_USERNAME
+WorkingDirectory=/path/to/WaveVisualizer
+Environment="PATH=/path/to/WaveVisualizer/venv/bin"
+ExecStart=/path/to/WaveVisualizer/venv/bin/gunicorn --workers 4 --bind 0.0.0.0:5000 app:app
+Restart=always
+
+[Install]
+WantedBy=multi-user.target 

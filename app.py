@@ -18,12 +18,12 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev_secret_key")
 
 # Configure database
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///wavevisualizer.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db.init_app(app)
 
 # Configure upload settings
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload size (Replit limitation)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload size
 app.config['UPLOAD_FOLDER_AUDIO'] = os.path.join(os.getcwd(), 'uploads', 'audio')
 app.config['UPLOAD_FOLDER_IMAGES'] = os.path.join(os.getcwd(), 'uploads', 'images')
 app.config['OUTPUT_FOLDER'] = os.path.join(os.getcwd(), 'output')
