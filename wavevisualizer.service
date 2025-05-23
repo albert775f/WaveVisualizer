@@ -6,8 +6,24 @@ After=network.target
 User=YOUR_USERNAME
 WorkingDirectory=/path/to/WaveVisualizer
 Environment="PATH=/path/to/WaveVisualizer/venv/bin"
-ExecStart=/path/to/WaveVisualizer/venv/bin/gunicorn --workers 4 --bind 0.0.0.0:5000 app:app
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONHASHSEED=random"
+ExecStart=/path/to/WaveVisualizer/venv/bin/gunicorn \
+    --workers 2 \
+    --timeout 300 \
+    --max-requests 1000 \
+    --max-requests-jitter 50 \
+    --worker-class sync \
+    --bind 0.0.0.0:5000 \
+    app:app
 Restart=always
+RestartSec=5
+StartLimitInterval=0
+
+# Resource limits
+LimitNOFILE=65535
+LimitNPROC=2048
+MemoryLimit=2G
 
 [Install]
 WantedBy=multi-user.target 

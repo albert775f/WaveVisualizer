@@ -84,7 +84,10 @@ def process_audio_visualization(
                 progress_callback(progress_percent)
             
             # Calculate spectrum using Short-time Fourier transform (STFT)
-            D = np.abs(librosa.stft(segment, n_fft=2048, hop_length=512))
+            # Dynamically adjust n_fft based on segment length
+            n_fft = min(2048, len(segment))
+            hop_length = n_fft // 4  # Adjust hop length proportionally
+            D = np.abs(librosa.stft(segment, n_fft=n_fft, hop_length=hop_length))
             
             # Convert to decibels
             D_db = librosa.amplitude_to_db(D, ref=np.max)
@@ -95,104 +98,99 @@ def process_audio_visualization(
             # Create a new figure for the spectrogram with adjusted size
             fig, ax = plt.subplots(figsize=(img_width/100, img_height/100), dpi=100)
             
-            # Plot the background image with correct orientation (not upside down)
-            bg_img = plt.imread(image_path)
-            ax.imshow(bg_img, origin='upper')
-            
-            # Calculate frequency bins to show (focus on audible range)
-            # Use the bar_count parameter for the number of frequency bins
-            n_bins = min(128, D_db.shape[0])
-            D_db_subset = D_db[:n_bins, :]
-            
-            # Calculate average amplitude across time for each frequency bin
-            # Apply responsiveness multiplier
-            avg_amplitudes = np.mean(D_db_subset, axis=1) * responsiveness
-            
-            # Normalize to 0-1 range for visualization
-            normalized_amps = (avg_amplitudes - np.min(avg_amplitudes)) / (np.max(avg_amplitudes) - np.min(avg_amplitudes))
-            
-            # Apply smoothing between frames if needed
-            prev_heights_var = getattr(process_audio_visualization, '_prev_heights', None)
-            if i > 0 and smoothing > 0 and prev_heights_var is not None:
-                try:
-                    # Apply smoothing between frames
-                    normalized_amps = prev_heights_var * smoothing + normalized_amps * (1 - smoothing)
-                except Exception as e:
-                    logger.warning(f"Smoothing error: {e}")
-            
-            # Store current heights for next frame as an attribute of the function
-            # This is a bit of a hack but lets us avoid global variables
-            process_audio_visualization._prev_heights = normalized_amps.copy()
-            
-            # Calculate bar positions and heights using custom parameters
-            n_bars = bar_count  # Number of bars to display
-            
-            # Calculate width of visualization bars
-            total_width = img_width * (1 - 2 * horizontal_margin)
-            bar_width = total_width / n_bars
-            
-            # Scale amplitude to reasonable height range
-            max_height = img_height * 0.8 * bar_height_scale
-            
-            # Color conversion from hex to RGB
-            if color.startswith('#'):
-                color_rgb = tuple(int(color.lstrip('#')[i:i+2], 16) / 255 for i in (0, 2, 4))
-            else:
-                color_rgb = (0, 1, 1)  # Default to cyan if color format is incorrect
-            
-            # Draw bars
-            for j in range(n_bars):
-                # Sample from normalized amplitudes, resampling to match bar_count
-                idx = int(j * (len(normalized_amps) / n_bars))
-                if idx >= len(normalized_amps):
-                    idx = len(normalized_amps) - 1
-                amplitude = normalized_amps[idx]
+            try:
+                # Plot the background image with correct orientation (not upside down)
+                bg_img = plt.imread(image_path)
+                ax.imshow(bg_img, origin='upper')
                 
-                # Scale amplitude to pixel height
-                rect_height = amplitude * max_height
+                # Calculate frequency bins to show (focus on audible range)
+                # Use the bar_count parameter for the number of frequency bins
+                n_bins = min(128, D_db.shape[0])
+                D_db_subset = D_db[:n_bins, :]
                 
-                # Position bars horizontally with margin
-                x_pos = horizontal_margin * img_width + j * bar_width
+                # Calculate average amplitude across time for each frequency bin
+                # Apply responsiveness multiplier
+                avg_amplitudes = np.mean(D_db_subset, axis=1) * responsiveness
                 
-                # Adjust width based on bar_width_ratio parameter
+                # Normalize to 0-1 range for visualization
+                normalized_amps = (avg_amplitudes - np.min(avg_amplitudes)) / (np.max(avg_amplitudes) - np.min(avg_amplitudes))
+                
+                # Apply smoothing between frames if needed
+                prev_heights_var = getattr(process_audio_visualization, '_prev_heights', None)
+                if i > 0 and smoothing > 0 and prev_heights_var is not None:
+                    try:
+                        # Apply smoothing between frames
+                        normalized_amps = prev_heights_var * smoothing + normalized_amps * (1 - smoothing)
+                    except Exception as e:
+                        logger.warning(f"Smoothing error: {e}")
+                
+                # Store current heights for next frame
+                process_audio_visualization._prev_heights = normalized_amps.copy()
+                
+                # Calculate bar positions and heights
+                n_bars = bar_count
+                total_width = img_width * (1 - 2 * horizontal_margin)
                 bar_width = (total_width / n_bars) * bar_width_ratio
+                max_height = img_height * 0.8 * bar_height_scale
                 
-                # Calculate vertical position based on parameter (0=top, 1=bottom)
-                # This needs to account for the bar height
-                rect_y = img_height * vertical_position - (rect_height / 2)
+                # Color conversion from hex to RGB
+                if color.startswith('#'):
+                    color_rgb = tuple(int(color.lstrip('#')[i:i+2], 16) / 255 for i in (0, 2, 4))
+                else:
+                    color_rgb = (0, 1, 1)  # Default to cyan
                 
-                # Draw glow effect if enabled
-                if glow_effect:
-                    glow_extra = 5  # Pixels of extra glow around bar
-                    glow_rect = patches.Rectangle(
-                        (x_pos - glow_extra, rect_y - glow_extra),
-                        bar_width + 2 * glow_extra,
-                        rect_height + 2 * glow_extra,
+                # Draw bars
+                for j in range(n_bars):
+                    idx = int(j * (len(normalized_amps) / n_bars))
+                    if idx >= len(normalized_amps):
+                        idx = len(normalized_amps) - 1
+                    amplitude = normalized_amps[idx]
+                    
+                    rect_height = amplitude * max_height
+                    x_pos = horizontal_margin * img_width + j * (total_width / n_bars)
+                    rect_y = img_height * vertical_position - (rect_height / 2)
+                    
+                    # Draw glow effect if enabled
+                    if glow_effect:
+                        glow_extra = 5
+                        glow_rect = patches.Rectangle(
+                            (x_pos - glow_extra, rect_y - glow_extra),
+                            bar_width + 2 * glow_extra,
+                            rect_height + 2 * glow_extra,
+                            color=color,
+                            alpha=0.3 * glow_intensity,
+                            edgecolor='none'
+                        )
+                        ax.add_patch(glow_rect)
+                    
+                    # Draw bar
+                    rect = patches.Rectangle(
+                        (x_pos, rect_y),
+                        bar_width,
+                        rect_height,
                         color=color,
-                        alpha=0.3 * glow_intensity,
-                        edgecolor='none'
+                        alpha=0.7
                     )
-                    ax.add_patch(glow_rect)
+                    ax.add_patch(rect)
                 
-                # Draw bar as rectangle with customized alpha
-                rect = patches.Rectangle(
-                    (x_pos, rect_y),
-                    bar_width,
-                    rect_height,
-                    color=color,
-                    alpha=0.7
-                )
-                ax.add_patch(rect)
-            
-            # Remove axes and set limits
-            ax.axis('off')
-            ax.set_xlim(0, img_width)
-            ax.set_ylim(0, img_height)
-            
-            # Save frame
-            frame_path = os.path.join(frames_dir, f"frame_{i:04d}.png")
-            plt.savefig(frame_path, bbox_inches='tight', pad_inches=0)
-            plt.close('all')
+                # Remove axes and set limits
+                ax.axis('off')
+                ax.set_xlim(0, img_width)
+                ax.set_ylim(0, img_height)
+                
+                # Save frame with error handling
+                try:
+                    plt.savefig(frame_path, bbox_inches='tight', pad_inches=0, format='png')
+                except Exception as e:
+                    logger.error(f"Error saving frame {i}: {str(e)}")
+                    raise
+                
+            except Exception as e:
+                logger.error(f"Error processing frame {i}: {str(e)}")
+                raise
+            finally:
+                plt.close('all')
+                gc.collect()  # Force garbage collection
             
             if i % 10 == 0:
                 logger.info(f"Generated frame {i}/{n_frames}")
