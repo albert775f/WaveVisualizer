@@ -11,12 +11,94 @@ import logging
 import gc  # For garbage collection
 from types import SimpleNamespace
 from PIL import Image
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import partial
 
 # Import our custom utility modules
 from utils.image_processor import ensure_even_dimensions
 from utils.video_processor import create_video_from_frames
 
 logger = logging.getLogger(__name__)
+
+def process_frame(args):
+    """Process a single frame with the given parameters"""
+    i, segment, image_path, width, height, color, bar_count, bar_width_ratio, bar_height_scale, \
+    glow_effect, glow_intensity, responsiveness, smoothing, vertical_position, horizontal_margin, \
+    prev_heights, frames_dir = args
+    
+    try:
+        # Calculate spectrum using Short-time Fourier transform (STFT)
+        n_fft = min(2048, len(segment))
+        hop_length = n_fft // 4
+        D = np.abs(librosa.stft(segment, n_fft=n_fft, hop_length=hop_length))
+        D_db = librosa.amplitude_to_db(D, ref=np.max)
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+        
+        # Plot background
+        bg_img = plt.imread(image_path)
+        ax.imshow(bg_img, origin='upper')
+        
+        # Process frequency data
+        n_bins = min(128, D_db.shape[0])
+        D_db_subset = D_db[:n_bins, :]
+        avg_amplitudes = np.mean(D_db_subset, axis=1) * responsiveness
+        normalized_amps = (avg_amplitudes - np.min(avg_amplitudes)) / (np.max(avg_amplitudes) - np.min(avg_amplitudes))
+        
+        # Apply smoothing
+        if prev_heights is not None:
+            normalized_amps = prev_heights * smoothing + normalized_amps * (1 - smoothing)
+        
+        # Draw visualization
+        total_width = width * (1 - 2 * horizontal_margin)
+        bar_width = (total_width / bar_count) * bar_width_ratio
+        max_height = height * 0.8 * bar_height_scale
+        
+        for j in range(bar_count):
+            idx = int(j * (len(normalized_amps) / bar_count))
+            if idx >= len(normalized_amps):
+                idx = len(normalized_amps) - 1
+            amplitude = normalized_amps[idx]
+            
+            rect_height = amplitude * max_height
+            x_pos = horizontal_margin * width + j * (total_width / bar_count)
+            rect_y = height * vertical_position - (rect_height / 2)
+            
+            if glow_effect:
+                glow_rect = patches.Rectangle(
+                    (x_pos - 5, rect_y - 5),
+                    bar_width + 10,
+                    rect_height + 10,
+                    color=color,
+                    alpha=0.3 * glow_intensity,
+                    edgecolor='none'
+                )
+                ax.add_patch(glow_rect)
+            
+            rect = patches.Rectangle(
+                (x_pos, rect_y),
+                bar_width,
+                rect_height,
+                color=color,
+                alpha=0.7
+            )
+            ax.add_patch(rect)
+        
+        ax.axis('off')
+        ax.set_xlim(0, width)
+        ax.set_ylim(0, height)
+        
+        # Save frame
+        frame_path = os.path.join(frames_dir, f"frame_{i:04d}.png")
+        plt.savefig(frame_path, bbox_inches='tight', pad_inches=0, format='png')
+        plt.close('all')
+        
+        return i, normalized_amps
+        
+    except Exception as e:
+        logger.error(f"Error processing frame {i}: {str(e)}")
+        raise
 
 def process_audio_visualization(
     audio_path, 
@@ -68,7 +150,10 @@ def process_audio_visualization(
         
         logger.info(f"Generating {n_frames} visualization frames...")
         
-        # Generate frames with visualization
+        # Prepare frame processing arguments
+        frame_args = []
+        prev_heights = None
+        
         for i in range(n_frames):
             start_idx = i * frame_length
             end_idx = min((i + 1) * frame_length, len(y))
@@ -77,123 +162,28 @@ def process_audio_visualization(
                 break
                 
             segment = y[start_idx:end_idx]
+            frame_args.append((
+                i, segment, image_path, width, height, color, bar_count, bar_width_ratio,
+                bar_height_scale, glow_effect, glow_intensity, responsiveness, smoothing,
+                vertical_position, horizontal_margin, prev_heights, frames_dir
+            ))
+        
+        # Process frames in parallel
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = [executor.submit(process_frame, args) for args in frame_args]
             
-            # Report progress if callback provided
-            if progress_callback and i % max(1, n_frames // 20) == 0:  # Update progress ~20 times
-                progress_percent = min(int(i / n_frames * 70) + 5, 75)  # 5-75% is frame generation
-                progress_callback(progress_percent)
-            
-            # Calculate spectrum using Short-time Fourier transform (STFT)
-            # Dynamically adjust n_fft based on segment length
-            n_fft = min(2048, len(segment))
-            hop_length = n_fft // 4  # Adjust hop length proportionally
-            D = np.abs(librosa.stft(segment, n_fft=n_fft, hop_length=hop_length))
-            
-            # Convert to decibels
-            D_db = librosa.amplitude_to_db(D, ref=np.max)
-            
-            # Get image dimensions to size the spectrum visualization
-            img_width, img_height = width, height
-            
-            # Create a new figure for the spectrogram with adjusted size
-            fig, ax = plt.subplots(figsize=(img_width/100, img_height/100), dpi=100)
-            
-            try:
-                # Plot the background image with correct orientation (not upside down)
-                bg_img = plt.imread(image_path)
-                ax.imshow(bg_img, origin='upper')
-                
-                # Calculate frequency bins to show (focus on audible range)
-                # Use the bar_count parameter for the number of frequency bins
-                n_bins = min(128, D_db.shape[0])
-                D_db_subset = D_db[:n_bins, :]
-                
-                # Calculate average amplitude across time for each frequency bin
-                # Apply responsiveness multiplier
-                avg_amplitudes = np.mean(D_db_subset, axis=1) * responsiveness
-                
-                # Normalize to 0-1 range for visualization
-                normalized_amps = (avg_amplitudes - np.min(avg_amplitudes)) / (np.max(avg_amplitudes) - np.min(avg_amplitudes))
-                
-                # Apply smoothing between frames if needed
-                prev_heights_var = getattr(process_audio_visualization, '_prev_heights', None)
-                if i > 0 and smoothing > 0 and prev_heights_var is not None:
-                    try:
-                        # Apply smoothing between frames
-                        normalized_amps = prev_heights_var * smoothing + normalized_amps * (1 - smoothing)
-                    except Exception as e:
-                        logger.warning(f"Smoothing error: {e}")
-                
-                # Store current heights for next frame
-                process_audio_visualization._prev_heights = normalized_amps.copy()
-                
-                # Calculate bar positions and heights
-                n_bars = bar_count
-                total_width = img_width * (1 - 2 * horizontal_margin)
-                bar_width = (total_width / n_bars) * bar_width_ratio
-                max_height = img_height * 0.8 * bar_height_scale
-                
-                # Color conversion from hex to RGB
-                if color.startswith('#'):
-                    color_rgb = tuple(int(color.lstrip('#')[i:i+2], 16) / 255 for i in (0, 2, 4))
-                else:
-                    color_rgb = (0, 1, 1)  # Default to cyan
-                
-                # Draw bars
-                for j in range(n_bars):
-                    idx = int(j * (len(normalized_amps) / n_bars))
-                    if idx >= len(normalized_amps):
-                        idx = len(normalized_amps) - 1
-                    amplitude = normalized_amps[idx]
-                    
-                    rect_height = amplitude * max_height
-                    x_pos = horizontal_margin * img_width + j * (total_width / n_bars)
-                    rect_y = img_height * vertical_position - (rect_height / 2)
-                    
-                    # Draw glow effect if enabled
-                    if glow_effect:
-                        glow_extra = 5
-                        glow_rect = patches.Rectangle(
-                            (x_pos - glow_extra, rect_y - glow_extra),
-                            bar_width + 2 * glow_extra,
-                            rect_height + 2 * glow_extra,
-                            color=color,
-                            alpha=0.3 * glow_intensity,
-                            edgecolor='none'
-                        )
-                        ax.add_patch(glow_rect)
-                    
-                    # Draw bar
-                    rect = patches.Rectangle(
-                        (x_pos, rect_y),
-                        bar_width,
-                        rect_height,
-                        color=color,
-                        alpha=0.7
-                    )
-                    ax.add_patch(rect)
-                
-                # Remove axes and set limits
-                ax.axis('off')
-                ax.set_xlim(0, img_width)
-                ax.set_ylim(0, img_height)
-                
-                # Save frame with error handling
+            for i, future in enumerate(as_completed(futures)):
                 try:
-                    plt.savefig(frame_path, bbox_inches='tight', pad_inches=0, format='png')
+                    frame_idx, new_heights = future.result()
+                    prev_heights = new_heights
+                    
+                    if progress_callback and i % max(1, n_frames // 20) == 0:
+                        progress_percent = min(int(i / n_frames * 70) + 5, 75)
+                        progress_callback(progress_percent)
+                        
                 except Exception as e:
-                    logger.error(f"Error saving frame {i}: {str(e)}")
+                    logger.error(f"Error processing frame {i}: {str(e)}")
                     raise
-                
-            except Exception as e:
-                logger.error(f"Error processing frame {i}: {str(e)}")
-                raise
-            finally:
-                plt.close('all')
-                gc.collect()  # Force garbage collection
-            
-            if i % 10 == 0:
-                logger.info(f"Generated frame {i}/{n_frames}")
         
         logger.info("All frames generated. Creating video...")
         
