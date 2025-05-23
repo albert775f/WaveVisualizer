@@ -14,7 +14,15 @@ export PYTHONUNBUFFERED=1
 export OMP_NUM_THREADS=4  # Optimize OpenMP threading
 export MKL_NUM_THREADS=4  # Optimize MKL threading
 export NUMEXPR_NUM_THREADS=4  # Optimize NumExpr threading
-export MemoryLimit=4G  # Erhöhe auf 4GB oder mehr
+export PYTHONHASHSEED=random
+export PYTHONOPTIMIZE=2  # Enable Python optimizations
+export PYTHONMALLOC=malloc  # Use system malloc
+export PYTHONMALLOCSTATS=1  # Enable malloc stats
+
+# System optimizations
+echo 3 > /proc/sys/vm/drop_caches  # Clear page cache
+echo 1 > /proc/sys/vm/compact_memory  # Compact memory
+echo 10 > /proc/sys/vm/swappiness  # Reduce swapping
 
 # Install dependencies if needed
 pip install -r requirements.txt
@@ -31,4 +39,10 @@ gunicorn --bind 0.0.0.0:5000 \
     --keep-alive 5 \
     --backlog 2048 \
     --log-level info \
+    --preload \
+    --worker-tmp-dir /dev/shm \
+    --max-requests-jitter 50 \
+    --graceful-timeout 120 \
+    --access-logfile - \
+    --error-logfile - \
     app:app 
